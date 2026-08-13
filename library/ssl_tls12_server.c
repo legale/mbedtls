@@ -18,6 +18,7 @@
 #include "mbedtls/platform_util.h"
 #include "constant_time_internal.h"
 #include "mbedtls/constant_time.h"
+#include "gost_tls.h"
 
 #include <string.h>
 
@@ -2473,6 +2474,9 @@ static int ssl_write_certificate_request(mbedtls_ssl_context *ssl)
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ALLOWED_ENABLED)
     p[1 + ct_len++] = MBEDTLS_SSL_CERT_TYPE_ECDSA_SIGN;
 #endif
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    p[1 + ct_len++] = MBEDTLS_SSL_CERT_TYPE_GOST_SIGN512;
+#endif
 
     p[0] = (unsigned char) ct_len++;
     p += ct_len;
@@ -3253,6 +3257,15 @@ static int ssl_write_server_key_exchange(mbedtls_ssl_context *ssl)
 
     MBEDTLS_SSL_DEBUG_MSG(2, ("=> write server key exchange"));
 
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (ssl->handshake->ciphersuite_info->key_exchange ==
+        MBEDTLS_KEY_EXCHANGE_GOST) {
+        MBEDTLS_SSL_DEBUG_MSG(2, ("<= skip write server key exchange"));
+        ssl->state++;
+        return 0;
+    }
+#endif
+
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_NON_PFS_ENABLED)
     /* Extract static ECDH parameters and abort if ServerKeyExchange
      * is not needed. */
@@ -3699,6 +3712,24 @@ static int ssl_parse_client_key_exchange(mbedtls_ssl_context *ssl)
         return MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE;
     }
 
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_GOST) {
+        if (ssl->handshake->key_cert == NULL ||
+            ssl->handshake->key_cert->key == NULL) {
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        }
+        ret = mbedtls_gost_key_transport_parse(
+            ssl->handshake->premaster, p, (size_t)(end - p),
+            ssl->handshake->key_cert->key, ssl->handshake->randbytes);
+        if (ret != 0) {
+            MBEDTLS_SSL_DEBUG_RET(1, "GOST key transport", ret);
+            return ret;
+        }
+        ssl->handshake->pmslen = 32;
+        p = end;
+    } else
+#endif
+
 #if defined(MBEDTLS_KEY_EXCHANGE_DHE_RSA_ENABLED)
     if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_DHE_RSA) {
         if ((ret = ssl_parse_client_dh_public(ssl, &p, end)) != 0) {
@@ -4103,7 +4134,7 @@ static int ssl_parse_certificate_verify(mbedtls_ssl_context *ssl)
 {
     int ret = MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE;
     size_t i, sig_len;
-    unsigned char hash[48];
+    unsigned char hash[64];
     unsigned char *hash_start = hash;
     size_t hashlen;
     mbedtls_pk_type_t pk_alg;
@@ -4238,9 +4269,20 @@ static int ssl_parse_certificate_verify(mbedtls_ssl_context *ssl)
         }
     }
 
+    const unsigned char *signature = ssl->in_msg + i;
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    unsigned char gost_signature[128];
+    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
+        if (sig_len != sizeof(gost_signature))
+            return MBEDTLS_ERR_SSL_DECODE_ERROR;
+        for (size_t j = 0; j < sig_len; j++)
+            gost_signature[j] = signature[sig_len - 1 - j];
+        signature = gost_signature;
+    }
+#endif
     if ((ret = mbedtls_pk_verify(peer_pk,
                                  md_alg, hash_start, hashlen,
-                                 ssl->in_msg + i, sig_len)) != 0) {
+                                 signature, sig_len)) != 0) {
         MBEDTLS_SSL_DEBUG_RET(1, "mbedtls_pk_verify", ret);
         return ret;
     }

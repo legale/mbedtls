@@ -378,6 +378,14 @@ typedef struct {
 
 static const oid_sig_alg_t oid_sig_alg[] =
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_WITH_STREEBOG_512,
+                       "gost3410-2012-512-with-streebog512",
+                       "GOST R 34.10-2012 with Streebog-512"),
+        MBEDTLS_MD_STREEBOG512, MBEDTLS_PK_GOST3410_512,
+    },
+#endif
 #if defined(MBEDTLS_RSA_C)
 #if defined(MBEDTLS_MD_CAN_MD5)
     {
@@ -505,6 +513,13 @@ typedef struct {
 
 static const oid_pk_alg_t oid_pk_alg[] =
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_2012_512,
+                       "gost3410-2012-512", "GOST R 34.10-2012 512"),
+        MBEDTLS_PK_GOST3410_512,
+    },
+#endif
     {
         OID_DESCRIPTOR(MBEDTLS_OID_PKCS1_RSA,           "rsaEncryption",    "RSA"),
         MBEDTLS_PK_RSA,

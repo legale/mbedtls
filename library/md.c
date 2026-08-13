@@ -41,6 +41,10 @@
 #include "mbedtls/sha512.h"
 #include "mbedtls/sha3.h"
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+#include <libpogost/streebog.h>
+#endif
+
 #if defined(MBEDTLS_PSA_CRYPTO_C)
 #include <psa/crypto.h>
 #include "md_psa.h"
@@ -136,9 +140,25 @@ static const mbedtls_md_info_t mbedtls_sha3_512_info = {
 };
 #endif
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static const mbedtls_md_info_t mbedtls_streebog256_info = {
+    MD_INFO(MBEDTLS_MD_STREEBOG256, 32, 64)
+};
+
+static const mbedtls_md_info_t mbedtls_streebog512_info = {
+    MD_INFO(MBEDTLS_MD_STREEBOG512, 64, 64)
+};
+#endif
+
 const mbedtls_md_info_t *mbedtls_md_info_from_type(mbedtls_md_type_t md_type)
 {
     switch (md_type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+            return &mbedtls_streebog256_info;
+        case MBEDTLS_MD_STREEBOG512:
+            return &mbedtls_streebog512_info;
+#endif
 #if defined(MBEDTLS_MD_CAN_MD5)
         case MBEDTLS_MD_MD5:
             return &mbedtls_md5_info;
@@ -271,6 +291,13 @@ void mbedtls_md_free(mbedtls_md_context_t *ctx)
         } else
 #endif
         switch (ctx->md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+            case MBEDTLS_MD_STREEBOG256:
+            case MBEDTLS_MD_STREEBOG512:
+                mbedtls_platform_zeroize(ctx->md_ctx,
+                                         sizeof(struct streebog_ctx));
+                break;
+#endif
 #if defined(MBEDTLS_MD5_C)
             case MBEDTLS_MD_MD5:
                 mbedtls_md5_free(ctx->md_ctx);
@@ -356,6 +383,12 @@ int mbedtls_md_clone(mbedtls_md_context_t *dst,
 #endif
 
     switch (src->md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+        case MBEDTLS_MD_STREEBOG512:
+            memcpy(dst->md_ctx, src->md_ctx, sizeof(struct streebog_ctx));
+            break;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             mbedtls_md5_clone(dst->md_ctx, src->md_ctx);
@@ -446,6 +479,15 @@ int mbedtls_md_setup(mbedtls_md_context_t *ctx, const mbedtls_md_info_t *md_info
     } else
 #endif
     switch (md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+        case MBEDTLS_MD_STREEBOG512:
+            ctx->md_ctx = mbedtls_calloc(1, sizeof(struct streebog_ctx));
+            if (ctx->md_ctx == NULL) {
+                return MBEDTLS_ERR_MD_ALLOC_FAILED;
+            }
+            break;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             ALLOC(md5);
@@ -525,6 +567,14 @@ int mbedtls_md_starts(mbedtls_md_context_t *ctx)
 #endif
 
     switch (ctx->md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+            streebog_init(ctx->md_ctx, 256);
+            return 0;
+        case MBEDTLS_MD_STREEBOG512:
+            streebog_init(ctx->md_ctx, 512);
+            return 0;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             return mbedtls_md5_starts(ctx->md_ctx);
@@ -584,6 +634,12 @@ int mbedtls_md_update(mbedtls_md_context_t *ctx, const unsigned char *input, siz
 #endif
 
     switch (ctx->md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+        case MBEDTLS_MD_STREEBOG512:
+            streebog_update(ctx->md_ctx, input, ilen);
+            return 0;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             return mbedtls_md5_update(ctx->md_ctx, input, ilen);
@@ -642,6 +698,12 @@ int mbedtls_md_finish(mbedtls_md_context_t *ctx, unsigned char *output)
 #endif
 
     switch (ctx->md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+        case MBEDTLS_MD_STREEBOG512:
+            streebog_final(ctx->md_ctx, output);
+            return 0;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             return mbedtls_md5_finish(ctx->md_ctx, output);
@@ -700,6 +762,14 @@ int mbedtls_md(const mbedtls_md_info_t *md_info, const unsigned char *input, siz
 #endif
 
     switch (md_info->type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+            streebog256(output, input, ilen);
+            return 0;
+        case MBEDTLS_MD_STREEBOG512:
+            streebog512(output, input, ilen);
+            return 0;
+#endif
 #if defined(MBEDTLS_MD5_C)
         case MBEDTLS_MD_MD5:
             return mbedtls_md5(input, ilen, output);
@@ -781,6 +851,11 @@ int mbedtls_md_error_from_psa(psa_status_t status)
  */
 static const int supported_digests[] = {
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+    MBEDTLS_MD_STREEBOG512,
+    MBEDTLS_MD_STREEBOG256,
+#endif
+
 #if defined(MBEDTLS_MD_CAN_SHA512)
     MBEDTLS_MD_SHA512,
 #endif
@@ -838,6 +913,10 @@ typedef struct {
 } md_name_entry;
 
 static const md_name_entry md_names[] = {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    { "STREEBOG256", MBEDTLS_MD_STREEBOG256 },
+    { "STREEBOG512", MBEDTLS_MD_STREEBOG512 },
+#endif
 #if defined(MBEDTLS_MD_CAN_MD5)
     { "MD5", MBEDTLS_MD_MD5 },
 #endif

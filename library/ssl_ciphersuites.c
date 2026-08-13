@@ -39,6 +39,9 @@ static const int ciphersuite_preference[] =
 #if defined(MBEDTLS_SSL_CIPHERSUITES)
     MBEDTLS_SSL_CIPHERSUITES,
 #else
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED) && defined(MBEDTLS_LIBPOGOST_C)
+    MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC,
+#endif
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
     /* TLS 1.3 ciphersuites */
     MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
@@ -279,6 +282,14 @@ static const int ciphersuite_preference[] =
 
 static const mbedtls_ssl_ciphersuite_t ciphersuite_definitions[] =
 {
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED) && defined(MBEDTLS_LIBPOGOST_C)
+    { MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC,
+      "TLS-GOST2012-KUZNYECHIK-KUZNYECHIKOMAC",
+      MBEDTLS_CIPHER_NONE, MBEDTLS_MD_STREEBOG256,
+      MBEDTLS_KEY_EXCHANGE_GOST,
+      MBEDTLS_CIPHERSUITE_NODTLS,
+      MBEDTLS_SSL_VERSION_TLS1_2, MBEDTLS_SSL_VERSION_TLS1_2 },
+#endif
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
 #if defined(MBEDTLS_SSL_HAVE_AES)
 #if defined(MBEDTLS_SSL_HAVE_GCM)
@@ -1938,6 +1949,9 @@ mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_pk_alg(const mbedtls_ssl_ciphe
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
             return MBEDTLS_PK_ECDSA;
 
+        case MBEDTLS_KEY_EXCHANGE_GOST:
+            return MBEDTLS_PK_GOST3410_512;
+
         case MBEDTLS_KEY_EXCHANGE_ECDH_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
             return MBEDTLS_PK_ECKEY;
@@ -2001,6 +2015,9 @@ mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_alg(const mbedtls_ssl_ciphersu
 
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
             return MBEDTLS_PK_ECDSA;
+
+        case MBEDTLS_KEY_EXCHANGE_GOST:
+            return MBEDTLS_PK_GOST3410_512;
 
         default:
             return MBEDTLS_PK_NONE;

@@ -109,6 +109,10 @@ void mbedtls_pk_restart_free(mbedtls_pk_restart_ctx *ctx)
 const mbedtls_pk_info_t *mbedtls_pk_info_from_type(mbedtls_pk_type_t pk_type)
 {
     switch (pk_type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_PK_GOST3410_512:
+            return &mbedtls_gost3410_512_info;
+#endif
 #if defined(MBEDTLS_RSA_C)
         case MBEDTLS_PK_RSA:
             return &mbedtls_rsa_info;

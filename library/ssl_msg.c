@@ -15,6 +15,7 @@
 #if defined(MBEDTLS_SSL_TLS_C)
 
 #include "mbedtls/platform.h"
+#include <libpogost/gost_tls.h>
 
 #include "mbedtls/ssl.h"
 #include "ssl_misc.h"
@@ -26,6 +27,22 @@
 #include "mbedtls/constant_time.h"
 
 #include <string.h>
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+static void gost_record_iv(unsigned char out[8], const unsigned char base[8],
+                           const unsigned char seq[8])
+{
+    unsigned int carry = 0;
+    int i;
+
+    for (i = 7; i >= 0; i--) {
+        unsigned int sum = base[i] + seq[i] + carry;
+
+        out[i] = sum;
+        carry = sum >> 8;
+    }
+}
+#endif
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
 #include "psa_util_internal.h"
@@ -965,6 +982,34 @@ int mbedtls_ssl_encrypt_buf(mbedtls_ssl_context *ssl,
         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
     }
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (transform->gost) {
+        unsigned char enc_key[32];
+        unsigned char mac_key[32];
+        unsigned char iv[8];
+
+        if (post_avail < 16)
+            return MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL;
+        if (gost_tls_tlstree_kuznyechik(enc_key, transform->gost_key_enc,
+                                        rec->ctr) != 0 ||
+            gost_tls_tlstree_kuznyechik(mac_key, transform->gost_mac_enc,
+                                        rec->ctr) != 0)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        ssl_extract_add_data_from_record(add_data, &add_data_len, rec,
+                                         transform->tls_version, 0);
+        kuznyechik_omac2(data + rec->data_len, mac_key,
+                         add_data, add_data_len, data, rec->data_len);
+        rec->data_len += 16;
+        gost_record_iv(iv, transform->iv_enc, rec->ctr);
+        kuznyechik_ctr_acpkm(data, data, rec->data_len,
+                             enc_key, iv, 4096);
+        mbedtls_platform_zeroize(enc_key, sizeof(enc_key));
+        mbedtls_platform_zeroize(mac_key, sizeof(mac_key));
+        mbedtls_platform_zeroize(iv, sizeof(iv));
+        return 0;
+    }
+#endif
+
     /* The following two code paths implement the (D)TLSInnerPlaintext
      * structure present in TLS 1.3 and DTLS 1.2 + CID.
      *
@@ -1518,6 +1563,37 @@ int mbedtls_ssl_decrypt_buf(mbedtls_ssl_context const *ssl,
 
     data = rec->buf + rec->data_offset;
     ssl_mode = mbedtls_ssl_get_mode_from_transform(transform);
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (transform->gost) {
+        unsigned char enc_key[32];
+        unsigned char mac_key[32];
+        unsigned char iv[8];
+        unsigned char mac[16];
+
+        if (rec->data_len < 16)
+            return MBEDTLS_ERR_SSL_INVALID_MAC;
+        if (gost_tls_tlstree_kuznyechik(enc_key, transform->gost_key_dec,
+                                        rec->ctr) != 0 ||
+            gost_tls_tlstree_kuznyechik(mac_key, transform->gost_mac_dec,
+                                        rec->ctr) != 0)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        gost_record_iv(iv, transform->iv_dec, rec->ctr);
+        kuznyechik_ctr_acpkm(data, data, rec->data_len,
+                             enc_key, iv, 4096);
+        rec->data_len -= 16;
+        ssl_extract_add_data_from_record(add_data, &add_data_len, rec,
+                                         transform->tls_version, 0);
+        kuznyechik_omac2(mac, mac_key, add_data, add_data_len,
+                         data, rec->data_len);
+        ret = mbedtls_ct_memcmp(mac, data + rec->data_len, sizeof(mac));
+        mbedtls_platform_zeroize(enc_key, sizeof(enc_key));
+        mbedtls_platform_zeroize(mac_key, sizeof(mac_key));
+        mbedtls_platform_zeroize(iv, sizeof(iv));
+        mbedtls_platform_zeroize(mac, sizeof(mac));
+        return ret == 0 ? 0 : MBEDTLS_ERR_SSL_INVALID_MAC;
+    }
+#endif
 
 #if defined(MBEDTLS_SSL_DTLS_CONNECTION_ID)
     /*

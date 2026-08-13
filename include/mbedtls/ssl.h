@@ -422,7 +422,7 @@
 /*
  * Length of the verify data for secure renegotiation
  */
-#define MBEDTLS_SSL_VERIFY_DATA_MAX_LEN 12
+#define MBEDTLS_SSL_VERIFY_DATA_MAX_LEN 32
 
 /*
  * Signaling ciphersuite values (SCSV)
@@ -440,10 +440,12 @@
 #define MBEDTLS_SSL_HASH_SHA256              4
 #define MBEDTLS_SSL_HASH_SHA384              5
 #define MBEDTLS_SSL_HASH_SHA512              6
+#define MBEDTLS_SSL_HASH_INTRINSIC           8
 
 #define MBEDTLS_SSL_SIG_ANON                 0
 #define MBEDTLS_SSL_SIG_RSA                  1
 #define MBEDTLS_SSL_SIG_ECDSA                3
+#define MBEDTLS_SSL_SIG_GOST512              65
 
 /*
  * TLS 1.3 signature algorithms
@@ -486,6 +488,7 @@
  */
 #define MBEDTLS_SSL_CERT_TYPE_RSA_SIGN       1
 #define MBEDTLS_SSL_CERT_TYPE_ECDSA_SIGN    64
+#define MBEDTLS_SSL_CERT_TYPE_GOST_SIGN512  68
 
 /*
  * Message, alert and handshake types
@@ -1264,6 +1267,7 @@ typedef enum {
     MBEDTLS_SSL_TLS_PRF_NONE,
     MBEDTLS_SSL_TLS_PRF_SHA384,
     MBEDTLS_SSL_TLS_PRF_SHA256,
+    MBEDTLS_SSL_TLS_PRF_GOST256,
     MBEDTLS_SSL_HKDF_EXPAND_SHA384,
     MBEDTLS_SSL_HKDF_EXPAND_SHA256
 }

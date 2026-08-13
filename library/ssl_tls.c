@@ -14,6 +14,7 @@
 #if defined(MBEDTLS_SSL_TLS_C)
 
 #include "mbedtls/platform.h"
+#include <libpogost/gost_tls.h>
 
 #include "mbedtls/ssl.h"
 #include "ssl_client.h"
@@ -431,6 +432,19 @@ static int ssl_calc_verify_tls_sha384(const mbedtls_ssl_context *, unsigned char
 static int ssl_calc_finished_tls_sha384(mbedtls_ssl_context *, unsigned char *, int);
 #endif /* MBEDTLS_MD_CAN_SHA384*/
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int tls_prf_gost256(const unsigned char *secret, size_t slen,
+                           const char *label,
+                           const unsigned char *random, size_t rlen,
+                           unsigned char *dstbuf, size_t dlen);
+static int ssl_calc_verify_tls_gost256(const mbedtls_ssl_context *,
+                                       unsigned char *, size_t *);
+static int ssl_calc_verify_tls_gost512(const mbedtls_ssl_context *,
+                                       unsigned char *, size_t *);
+static int ssl_calc_finished_tls_gost256(mbedtls_ssl_context *,
+                                         unsigned char *, int);
+#endif
+
 static size_t ssl_tls12_session_save(const mbedtls_ssl_session *session,
                                      unsigned char *buf,
                                      size_t buf_len);
@@ -450,6 +464,10 @@ static int ssl_update_checksum_sha256(mbedtls_ssl_context *, const unsigned char
 #if defined(MBEDTLS_MD_CAN_SHA384)
 static int ssl_update_checksum_sha384(mbedtls_ssl_context *, const unsigned char *, size_t);
 #endif /* MBEDTLS_MD_CAN_SHA384*/
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int ssl_update_checksum_gost(mbedtls_ssl_context *,
+                                    const unsigned char *, size_t);
+#endif
 
 int  mbedtls_ssl_tls_prf(const mbedtls_tls_prf_types prf,
                          const unsigned char *secret, size_t slen,
@@ -471,6 +489,11 @@ int  mbedtls_ssl_tls_prf(const mbedtls_tls_prf_types prf,
             tls_prf = tls_prf_sha256;
             break;
 #endif /* MBEDTLS_MD_CAN_SHA256*/
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_SSL_TLS_PRF_GOST256:
+            tls_prf = tls_prf_gost256;
+            break;
+#endif
 #endif /* MBEDTLS_SSL_PROTO_TLS1_2 */
         default:
             return MBEDTLS_ERR_SSL_FEATURE_UNAVAILABLE;
@@ -772,6 +795,13 @@ void mbedtls_ssl_optimize_checksum(mbedtls_ssl_context *ssl,
 {
     ((void) ciphersuite_info);
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (ciphersuite_info->mac == MBEDTLS_MD_STREEBOG256) {
+        ssl->handshake->update_checksum = ssl_update_checksum_gost;
+        return;
+    }
+#endif
+
 #if defined(MBEDTLS_MD_CAN_SHA384)
     if (ciphersuite_info->mac == MBEDTLS_MD_SHA384) {
         ssl->handshake->update_checksum = ssl_update_checksum_sha384;
@@ -818,6 +848,9 @@ int mbedtls_ssl_add_hs_msg_to_checksum(mbedtls_ssl_context *ssl,
 
 int mbedtls_ssl_reset_checksum(mbedtls_ssl_context *ssl)
 {
+#if defined(MBEDTLS_LIBPOGOST_C) && defined(MBEDTLS_USE_PSA_CRYPTO)
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA256) || \
     defined(MBEDTLS_MD_CAN_SHA384)
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
@@ -877,12 +910,35 @@ int mbedtls_ssl_reset_checksum(mbedtls_ssl_context *ssl)
     }
 #endif
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    mbedtls_md_free(&ssl->handshake->fin_gost256);
+    mbedtls_md_init(&ssl->handshake->fin_gost256);
+    ret = mbedtls_md_setup(&ssl->handshake->fin_gost256,
+                           mbedtls_md_info_from_type(MBEDTLS_MD_STREEBOG256), 0);
+    if (ret != 0)
+        return ret;
+    ret = mbedtls_md_starts(&ssl->handshake->fin_gost256);
+    if (ret != 0)
+        return ret;
+    mbedtls_md_free(&ssl->handshake->fin_gost512);
+    mbedtls_md_init(&ssl->handshake->fin_gost512);
+    ret = mbedtls_md_setup(&ssl->handshake->fin_gost512,
+                           mbedtls_md_info_from_type(MBEDTLS_MD_STREEBOG512), 0);
+    if (ret != 0)
+        return ret;
+    ret = mbedtls_md_starts(&ssl->handshake->fin_gost512);
+    if (ret != 0)
+        return ret;
+#endif
     return 0;
 }
 
 static int ssl_update_checksum_start(mbedtls_ssl_context *ssl,
                                      const unsigned char *buf, size_t len)
 {
+#if defined(MBEDTLS_LIBPOGOST_C) && defined(MBEDTLS_USE_PSA_CRYPTO)
+    int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA256) || \
     defined(MBEDTLS_MD_CAN_SHA384)
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
@@ -921,6 +977,14 @@ static int ssl_update_checksum_start(mbedtls_ssl_context *ssl,
     }
 #endif
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    ret = mbedtls_md_update(&ssl->handshake->fin_gost256, buf, len);
+    if (ret != 0)
+        return ret;
+    ret = mbedtls_md_update(&ssl->handshake->fin_gost512, buf, len);
+    if (ret != 0)
+        return ret;
+#endif
     return 0;
 }
 
@@ -950,6 +1014,19 @@ static int ssl_update_checksum_sha384(mbedtls_ssl_context *ssl,
 }
 #endif
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int ssl_update_checksum_gost(mbedtls_ssl_context *ssl,
+                                    const unsigned char *buf, size_t len)
+{
+    int ret;
+
+    ret = mbedtls_md_update(&ssl->handshake->fin_gost256, buf, len);
+    if (ret != 0)
+        return ret;
+    return mbedtls_md_update(&ssl->handshake->fin_gost512, buf, len);
+}
+#endif
+
 static void ssl_handshake_params_init(mbedtls_ssl_handshake_params *handshake)
 {
     memset(handshake, 0, sizeof(mbedtls_ssl_handshake_params));
@@ -967,6 +1044,10 @@ static void ssl_handshake_params_init(mbedtls_ssl_handshake_params *handshake)
 #else
     mbedtls_md_init(&handshake->fin_sha384);
 #endif
+#endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    mbedtls_md_init(&handshake->fin_gost256);
+    mbedtls_md_init(&handshake->fin_gost512);
 #endif
 
     handshake->update_checksum = ssl_update_checksum_start;
@@ -2387,6 +2468,10 @@ static mbedtls_ssl_mode_t mbedtls_ssl_get_actual_mode(
 mbedtls_ssl_mode_t mbedtls_ssl_get_mode_from_transform(
     const mbedtls_ssl_transform *transform)
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (transform->gost)
+        return MBEDTLS_SSL_MODE_STREAM;
+#endif
     mbedtls_ssl_mode_t base_mode = mbedtls_ssl_get_base_mode(
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
         transform->psa_alg
@@ -4182,6 +4267,10 @@ void mbedtls_ssl_handshake_free(mbedtls_ssl_context *ssl)
     mbedtls_md_free(&handshake->fin_sha384);
 #endif
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    mbedtls_md_free(&handshake->fin_gost256);
+    mbedtls_md_free(&handshake->fin_gost512);
+#endif
 
 #if defined(MBEDTLS_DHM_C)
     mbedtls_dhm_free(&handshake->dhm_ctx);
@@ -5088,6 +5177,10 @@ static uint16_t ssl_preset_default_sig_algs[] = {
 /* NOTICE: see above */
 #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
 static uint16_t ssl_tls12_preset_default_sig_algs[] = {
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_GOST512,
+                                       MBEDTLS_SSL_HASH_INTRINSIC),
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA512)
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ALLOWED_ENABLED)
     MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_ECDSA, MBEDTLS_SSL_HASH_SHA512),
@@ -5454,7 +5547,9 @@ void mbedtls_ssl_config_free(mbedtls_ssl_config *conf)
 }
 
 #if defined(MBEDTLS_PK_C) && \
-    (defined(MBEDTLS_RSA_C) || defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED))
+    (defined(MBEDTLS_RSA_C) || \
+    defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED) || \
+    defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED))
 /*
  * Convert between MBEDTLS_PK_XXX and SSL_SIG_XXX
  */
@@ -5470,6 +5565,11 @@ unsigned char mbedtls_ssl_sig_from_pk(mbedtls_pk_context *pk)
         return MBEDTLS_SSL_SIG_ECDSA;
     }
 #endif
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (mbedtls_pk_can_do(pk, MBEDTLS_PK_GOST3410_512)) {
+        return MBEDTLS_SSL_SIG_GOST512;
+    }
+#endif
     return MBEDTLS_SSL_SIG_ANON;
 }
 
@@ -5481,6 +5581,8 @@ unsigned char mbedtls_ssl_sig_from_pk_alg(mbedtls_pk_type_t type)
         case MBEDTLS_PK_ECDSA:
         case MBEDTLS_PK_ECKEY:
             return MBEDTLS_SSL_SIG_ECDSA;
+        case MBEDTLS_PK_GOST3410_512:
+            return MBEDTLS_SSL_SIG_GOST512;
         default:
             return MBEDTLS_SSL_SIG_ANON;
     }
@@ -5496,6 +5598,10 @@ mbedtls_pk_type_t mbedtls_ssl_pk_alg_from_sig(unsigned char sig)
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED)
         case MBEDTLS_SSL_SIG_ECDSA:
             return MBEDTLS_PK_ECDSA;
+#endif
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+        case MBEDTLS_SSL_SIG_GOST512:
+            return MBEDTLS_PK_GOST3410_512;
 #endif
         default:
             return MBEDTLS_PK_NONE;
@@ -5534,6 +5640,10 @@ mbedtls_md_type_t mbedtls_ssl_md_alg_from_hash(unsigned char hash)
         case MBEDTLS_SSL_HASH_SHA512:
             return MBEDTLS_MD_SHA512;
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_SSL_HASH_INTRINSIC:
+            return MBEDTLS_MD_STREEBOG512;
+#endif
         default:
             return MBEDTLS_MD_NONE;
     }
@@ -5568,6 +5678,10 @@ unsigned char mbedtls_ssl_hash_from_md_alg(int md)
 #if defined(MBEDTLS_MD_CAN_SHA512)
         case MBEDTLS_MD_SHA512:
             return MBEDTLS_SSL_HASH_SHA512;
+#endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG512:
+            return MBEDTLS_SSL_HASH_INTRINSIC;
 #endif
         default:
             return MBEDTLS_SSL_HASH_NONE;
@@ -5761,6 +5875,10 @@ int mbedtls_ssl_check_cert_usage(const mbedtls_x509_crt *cert,
                 usage = MBEDTLS_X509_KU_DIGITAL_SIGNATURE;
                 break;
 
+            case MBEDTLS_KEY_EXCHANGE_GOST:
+                usage = MBEDTLS_X509_KU_DIGITAL_SIGNATURE;
+                break;
+
             case MBEDTLS_KEY_EXCHANGE_ECDH_RSA:
             case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
                 usage = MBEDTLS_X509_KU_KEY_AGREEMENT;
@@ -5926,6 +6044,35 @@ exit:
 }
 #endif /* MBEDTLS_MD_CAN_SHA256 */
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int ssl_get_handshake_transcript_gost(mbedtls_ssl_context *ssl,
+                                             mbedtls_md_type_t md,
+                                             unsigned char *dst,
+                                             size_t dst_len, size_t *olen)
+{
+    mbedtls_md_context_t cloned;
+    mbedtls_md_context_t *source;
+    size_t len;
+    int ret;
+
+    source = md == MBEDTLS_MD_STREEBOG512 ?
+             &ssl->handshake->fin_gost512 : &ssl->handshake->fin_gost256;
+    len = md == MBEDTLS_MD_STREEBOG512 ? 64 : 32;
+    if (dst_len < len)
+        return MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL;
+    mbedtls_md_init(&cloned);
+    ret = mbedtls_md_setup(&cloned, mbedtls_md_info_from_type(md), 0);
+    if (ret == 0)
+        ret = mbedtls_md_clone(&cloned, source);
+    if (ret == 0)
+        ret = mbedtls_md_finish(&cloned, dst);
+    mbedtls_md_free(&cloned);
+    if (ret == 0)
+        *olen = len;
+    return ret;
+}
+#endif
+
 int mbedtls_ssl_get_handshake_transcript(mbedtls_ssl_context *ssl,
                                          const mbedtls_md_type_t md,
                                          unsigned char *dst,
@@ -5943,6 +6090,11 @@ int mbedtls_ssl_get_handshake_transcript(mbedtls_ssl_context *ssl,
         case MBEDTLS_MD_SHA256:
             return ssl_get_handshake_transcript_sha256(ssl, dst, dst_len, olen);
 #endif /* MBEDTLS_MD_CAN_SHA256*/
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+        case MBEDTLS_MD_STREEBOG512:
+            return ssl_get_handshake_transcript_gost(ssl, md, dst, dst_len, olen);
+#endif
 
         default:
 #if !defined(MBEDTLS_MD_CAN_SHA384) && \
@@ -6344,6 +6496,16 @@ static int tls_prf_sha384(const unsigned char *secret, size_t slen,
 }
 #endif /* MBEDTLS_MD_CAN_SHA384*/
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int tls_prf_gost256(const unsigned char *secret, size_t slen,
+                           const char *label,
+                           const unsigned char *random, size_t rlen,
+                           unsigned char *dstbuf, size_t dlen)
+{
+    return gost_tls_prf_256(dstbuf, dlen, secret, slen, label, random, rlen);
+}
+#endif
+
 /*
  * Set appropriate PRF function and other SSL / TLS1.2 functions
  *
@@ -6357,6 +6519,14 @@ MBEDTLS_CHECK_RETURN_CRITICAL
 static int ssl_set_handshake_prfs(mbedtls_ssl_handshake_params *handshake,
                                   mbedtls_md_type_t hash)
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (hash == MBEDTLS_MD_STREEBOG256) {
+        handshake->tls_prf = tls_prf_gost256;
+        handshake->calc_verify = ssl_calc_verify_tls_gost256;
+        handshake->calc_finished = ssl_calc_finished_tls_gost256;
+        return 0;
+    }
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA384)
     if (hash == MBEDTLS_MD_SHA384) {
         handshake->tls_prf = tls_prf_sha384;
@@ -6654,6 +6824,11 @@ int mbedtls_ssl_derive_keys(mbedtls_ssl_context *ssl)
 int mbedtls_ssl_set_calc_verify_md(mbedtls_ssl_context *ssl, int md)
 {
     switch (md) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_SSL_HASH_INTRINSIC:
+            ssl->handshake->calc_verify = ssl_calc_verify_tls_gost512;
+            break;
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA384)
         case MBEDTLS_SSL_HASH_SHA384:
             ssl->handshake->calc_verify = ssl_calc_verify_tls_sha384;
@@ -6775,6 +6950,22 @@ int ssl_calc_verify_tls_sha384(const mbedtls_ssl_context *ssl,
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 }
 #endif /* MBEDTLS_MD_CAN_SHA384 */
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int ssl_calc_verify_tls_gost256(const mbedtls_ssl_context *ssl,
+                                       unsigned char *hash, size_t *hlen)
+{
+    return ssl_calc_verify_tls_legacy(ssl, &ssl->handshake->fin_gost256,
+                                      hash, hlen);
+}
+
+static int ssl_calc_verify_tls_gost512(const mbedtls_ssl_context *ssl,
+                                       unsigned char *hash, size_t *hlen)
+{
+    return ssl_calc_verify_tls_legacy(ssl, &ssl->handshake->fin_gost512,
+                                      hash, hlen);
+}
+#endif
 
 #if !defined(MBEDTLS_USE_PSA_CRYPTO) &&                      \
     defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED)
@@ -7829,6 +8020,27 @@ static int ssl_calc_finished_tls_sha384(
 }
 #endif /* MBEDTLS_MD_CAN_SHA384*/
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+static int ssl_calc_finished_tls_gost256(mbedtls_ssl_context *ssl,
+                                         unsigned char *buf, int from)
+{
+    unsigned char hash[32];
+    size_t hash_len;
+    const char *sender;
+    int ret;
+
+    ret = ssl_calc_verify_tls_gost256(ssl, hash, &hash_len);
+    if (ret != 0)
+        return ret;
+    sender = from == MBEDTLS_SSL_IS_CLIENT ?
+             "client finished" : "server finished";
+    ret = ssl->handshake->tls_prf(ssl->session_negotiate->master, 48,
+                                  sender, hash, hash_len, buf, 32);
+    mbedtls_platform_zeroize(hash, sizeof(hash));
+    return ret;
+}
+#endif
+
 void mbedtls_ssl_handshake_wrapup_free_hs_transform(mbedtls_ssl_context *ssl)
 {
     MBEDTLS_SSL_DEBUG_MSG(3, ("=> handshake wrapup: final free"));
@@ -7934,7 +8146,8 @@ int mbedtls_ssl_write_finished(mbedtls_ssl_context *ssl)
      * ciphersuite does this (and this is unlikely to change as activity has
      * moved to TLS 1.3 now) so we can keep the hardcoded 12 here.
      */
-    hash_len = 12;
+    hash_len = ssl->handshake->ciphersuite_info->mac ==
+               MBEDTLS_MD_STREEBOG256 ? 32 : 12;
 
 #if defined(MBEDTLS_SSL_RENEGOTIATION)
     ssl->verify_data_len = hash_len;
@@ -8026,12 +8239,13 @@ int mbedtls_ssl_write_finished(mbedtls_ssl_context *ssl)
     return 0;
 }
 
-#define SSL_MAX_HASH_LEN 12
+#define SSL_MAX_HASH_LEN 32
 
 int mbedtls_ssl_parse_finished(mbedtls_ssl_context *ssl)
 {
     int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
-    unsigned int hash_len = 12;
+    unsigned int hash_len = ssl->handshake->ciphersuite_info->mac ==
+                            MBEDTLS_MD_STREEBOG256 ? 32 : 12;
     unsigned char buf[SSL_MAX_HASH_LEN];
 
     MBEDTLS_SSL_DEBUG_MSG(2, ("=> parse finished"));
@@ -8120,6 +8334,12 @@ static tls_prf_fn ssl_tls12prf_from_cs(int ciphersuite_id)
 {
     const mbedtls_ssl_ciphersuite_t * const ciphersuite_info =
         mbedtls_ssl_ciphersuite_from_id(ciphersuite_id);
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (ciphersuite_info != NULL &&
+        ciphersuite_info->mac == MBEDTLS_MD_STREEBOG256) {
+        return tls_prf_gost256;
+    }
+#endif
 #if defined(MBEDTLS_MD_CAN_SHA384)
     if (ciphersuite_info != NULL && ciphersuite_info->mac == MBEDTLS_MD_SHA384) {
         return tls_prf_sha384;
@@ -8152,6 +8372,11 @@ static mbedtls_tls_prf_types tls_prf_get_type(mbedtls_ssl_tls_prf_cb *tls_prf)
 #if defined(MBEDTLS_MD_CAN_SHA256)
     if (tls_prf == tls_prf_sha256) {
         return MBEDTLS_SSL_TLS_PRF_SHA256;
+    } else
+#endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (tls_prf == tls_prf_gost256) {
+        return MBEDTLS_SSL_TLS_PRF_GOST256;
     } else
 #endif
     return MBEDTLS_SSL_TLS_PRF_NONE;
@@ -8252,6 +8477,41 @@ static int ssl_tls12_populate_transform(mbedtls_ssl_transform *transform,
                                   ciphersuite));
         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
     }
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (ciphersuite == MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC) {
+        ret = tls_prf(master, 48, "key expansion", randbytes, 64,
+                      keyblk, 144);
+        if (ret != 0)
+            goto end;
+        transform->gost = 1;
+        transform->maclen = 16;
+        transform->ivlen = 0;
+        transform->minlen = 16;
+        if (endpoint == MBEDTLS_SSL_IS_CLIENT) {
+            memcpy(transform->gost_mac_enc, keyblk, 32);
+            memcpy(transform->gost_mac_dec, keyblk + 32, 32);
+            memcpy(transform->gost_key_enc, keyblk + 64, 32);
+            memcpy(transform->gost_key_dec, keyblk + 96, 32);
+            memcpy(transform->iv_enc, keyblk + 128, 8);
+            memcpy(transform->iv_dec, keyblk + 136, 8);
+        } else {
+            memcpy(transform->gost_mac_enc, keyblk + 32, 32);
+            memcpy(transform->gost_mac_dec, keyblk, 32);
+            memcpy(transform->gost_key_enc, keyblk + 96, 32);
+            memcpy(transform->gost_key_dec, keyblk + 64, 32);
+            memcpy(transform->iv_enc, keyblk + 136, 8);
+            memcpy(transform->iv_dec, keyblk + 128, 8);
+        }
+        if (ssl != NULL && ssl->f_export_keys != NULL) {
+            ssl->f_export_keys(ssl->p_export_keys,
+                               MBEDTLS_SSL_KEY_EXPORT_TLS12_MASTER_SECRET,
+                               master, 48, randbytes + 32, randbytes,
+                               MBEDTLS_SSL_TLS_PRF_GOST256);
+        }
+        goto end;
+    }
+#endif
 
     ssl_mode = mbedtls_ssl_get_mode_from_ciphersuite(
 #if defined(MBEDTLS_SSL_SOME_SUITES_USE_CBC_ETM)

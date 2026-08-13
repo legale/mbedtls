@@ -44,6 +44,7 @@ set(src_crypto
     entropy_poll.c
     error.c
     gcm.c
+    gost_pk.c
     hkdf.c
     hmac_drbg.c
     lmots.c
@@ -107,6 +108,7 @@ set(src_x509
 
 set(src_tls
     debug.c
+    gost_tls.c
     mps_reader.c
     mps_trace.c
     net_sockets.c
@@ -258,6 +260,13 @@ endif()
 
 set(target_libraries ${mbedcrypto_target} ${mbedx509_target} ${mbedtls_target})
 
+if(MBEDTLS_LIBPOGOST_ROOT)
+    set(libpogost_include ${MBEDTLS_LIBPOGOST_ROOT}/include)
+    set(libpogost_library ${MBEDTLS_LIBPOGOST_ROOT}/lib/libpogost.a)
+elseif(EXISTS ${MBEDTLS_DIR}/include/mbedtls/mbedtls_config.h)
+    message(FATAL_ERROR "MBEDTLS_LIBPOGOST_ROOT is required for this build")
+endif()
+
 if(USE_STATIC_MBEDTLS_LIBRARY AND USE_SHARED_MBEDTLS_LIBRARY)
     string(APPEND mbedtls_static_target    "_static")
     string(APPEND mbedx509_static_target   "_static")
@@ -276,6 +285,10 @@ if(USE_STATIC_MBEDTLS_LIBRARY)
     add_library(${mbedcrypto_static_target} STATIC ${src_crypto})
     set_target_properties(${mbedcrypto_static_target} PROPERTIES OUTPUT_NAME mbedcrypto)
     target_link_libraries(${mbedcrypto_static_target} PUBLIC ${libs})
+    if(MBEDTLS_LIBPOGOST_ROOT)
+        target_include_directories(${mbedcrypto_static_target} PRIVATE ${libpogost_include})
+        target_link_libraries(${mbedcrypto_static_target} PUBLIC ${libpogost_library})
+    endif()
 
     if(TARGET ${everest_target})
         target_link_libraries(${mbedcrypto_static_target} PUBLIC ${everest_target})
@@ -292,6 +305,10 @@ if(USE_STATIC_MBEDTLS_LIBRARY)
     add_library(${mbedtls_static_target} STATIC ${src_tls})
     set_target_properties(${mbedtls_static_target} PROPERTIES OUTPUT_NAME mbedtls)
     target_link_libraries(${mbedtls_static_target} PUBLIC ${libs} ${mbedx509_static_target})
+    if(MBEDTLS_LIBPOGOST_ROOT)
+        target_include_directories(${mbedtls_static_target} PRIVATE ${libpogost_include})
+        target_link_libraries(${mbedtls_static_target} PUBLIC ${libpogost_library})
+    endif()
 endif(USE_STATIC_MBEDTLS_LIBRARY)
 
 if(USE_SHARED_MBEDTLS_LIBRARY)
@@ -299,6 +316,10 @@ if(USE_SHARED_MBEDTLS_LIBRARY)
     add_library(${mbedcrypto_target} SHARED ${src_crypto})
     set_target_properties(${mbedcrypto_target} PROPERTIES VERSION 3.5.1 SOVERSION 15)
     target_link_libraries(${mbedcrypto_target} PUBLIC ${libs})
+    if(MBEDTLS_LIBPOGOST_ROOT)
+        target_include_directories(${mbedcrypto_target} PRIVATE ${libpogost_include})
+        target_link_libraries(${mbedcrypto_target} PRIVATE ${libpogost_library})
+    endif()
 
     if(TARGET ${everest_target})
         target_link_libraries(${mbedcrypto_target} PUBLIC ${everest_target})
@@ -315,6 +336,10 @@ if(USE_SHARED_MBEDTLS_LIBRARY)
     add_library(${mbedtls_target} SHARED ${src_tls})
     set_target_properties(${mbedtls_target} PROPERTIES VERSION 3.5.1 SOVERSION 20)
     target_link_libraries(${mbedtls_target} PUBLIC ${libs} ${mbedx509_target})
+    if(MBEDTLS_LIBPOGOST_ROOT)
+        target_include_directories(${mbedtls_target} PRIVATE ${libpogost_include})
+        target_link_libraries(${mbedtls_target} PRIVATE ${libpogost_library})
+    endif()
 endif(USE_SHARED_MBEDTLS_LIBRARY)
 
 foreach(target IN LISTS target_libraries)

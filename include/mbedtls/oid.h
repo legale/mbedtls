@@ -111,6 +111,14 @@
 
 #define MBEDTLS_OID_NIST_ALG                    MBEDTLS_OID_GOV "\x03\x04" /** { joint-iso-itu-t(2) country(16) us(840) organization(1) gov(101) csor(3) nistAlgorithm(4) */
 
+/* TC26 algorithms: 1.2.643.7.1. */
+#define MBEDTLS_OID_TC26                        "\x2a\x85\x03\x07\x01"
+#define MBEDTLS_OID_GOST3410_2012_512           MBEDTLS_OID_TC26 "\x01\x01\x02"
+#define MBEDTLS_OID_STREEBOG_512                MBEDTLS_OID_TC26 "\x01\x02\x03"
+#define MBEDTLS_OID_GOST3410_WITH_STREEBOG_512  MBEDTLS_OID_TC26 "\x01\x03\x03"
+#define MBEDTLS_OID_GOST3410_2012_512_PARAMSET_A \
+        MBEDTLS_OID_TC26 "\x02\x01\x02\x01"
+
 /**
  * Private Internet Extensions
  * { iso(1) identified-organization(3) dod(6) internet(1)

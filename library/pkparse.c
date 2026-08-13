@@ -31,6 +31,9 @@
 #include "mbedtls/ecp.h"
 #include "pk_internal.h"
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+#include "gost_pk.h"
+#endif
 
 /* Extended formats */
 #if defined(MBEDTLS_PEM_PARSE_C)
@@ -922,6 +925,13 @@ int mbedtls_pk_parse_subpubkey(unsigned char **p, const unsigned char *end,
         ret = pk_get_rsapubkey(p, end, mbedtls_pk_rsa(*pk));
     } else
 #endif /* MBEDTLS_RSA_C */
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
+        ret = mbedtls_gost3410_parse_public(pk, &alg_params,
+                                            *p, (size_t) (end - *p));
+        *p = (unsigned char *) end;
+    } else
+#endif
 #if defined(MBEDTLS_PK_HAVE_ECC_KEYS)
     if (pk_alg == MBEDTLS_PK_ECKEY_DH || pk_alg == MBEDTLS_PK_ECKEY) {
 #if defined(MBEDTLS_PK_HAVE_RFC8410_CURVES)
@@ -1362,6 +1372,14 @@ static int pk_parse_key_pkcs8_unencrypted_der(
         }
     } else
 #endif /* MBEDTLS_RSA_C */
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
+        if ((ret = mbedtls_gost3410_parse_private(pk, &params, p, len)) != 0) {
+            mbedtls_pk_free(pk);
+            return ret;
+        }
+    } else
+#endif
 #if defined(MBEDTLS_PK_HAVE_ECC_KEYS)
     if (pk_alg == MBEDTLS_PK_ECKEY || pk_alg == MBEDTLS_PK_ECKEY_DH) {
 #if defined(MBEDTLS_PK_HAVE_RFC8410_CURVES)

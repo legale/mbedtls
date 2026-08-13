@@ -53,6 +53,8 @@ typedef enum {
     MBEDTLS_MD_SHA256=0x09,    /**< The SHA-256 message digest. */
     MBEDTLS_MD_SHA384=0x0a,    /**< The SHA-384 message digest. */
     MBEDTLS_MD_SHA512=0x0b,    /**< The SHA-512 message digest. */
+    MBEDTLS_MD_STREEBOG256=0x0c, /**< GOST R 34.11-2012, 256 bits. */
+    MBEDTLS_MD_STREEBOG512=0x0d, /**< GOST R 34.11-2012, 512 bits. */
     MBEDTLS_MD_SHA3_224=0x10,  /**< The SHA3-224 message digest. */
     MBEDTLS_MD_SHA3_256=0x11,  /**< The SHA3-256 message digest. */
     MBEDTLS_MD_SHA3_384=0x12,  /**< The SHA3-384 message digest. */

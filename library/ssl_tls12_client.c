@@ -17,6 +17,7 @@
 #include "mbedtls/debug.h"
 #include "mbedtls/error.h"
 #include "mbedtls/constant_time.h"
+#include "gost_tls.h"
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
 #include "psa_util_internal.h"
@@ -2095,6 +2096,14 @@ static int ssl_parse_server_key_exchange(mbedtls_ssl_context *ssl)
     ((void) end);
 #endif
 
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_GOST) {
+        MBEDTLS_SSL_DEBUG_MSG(2, ("<= skip parse server key exchange"));
+        ssl->state++;
+        return 0;
+    }
+#endif
+
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDH_RSA_ENABLED) || \
     defined(MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA_ENABLED)
     if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_ECDH_RSA ||
@@ -2710,6 +2719,31 @@ static int ssl_write_client_key_exchange(mbedtls_ssl_context *ssl)
 
     MBEDTLS_SSL_DEBUG_MSG(2, ("=> write client key exchange"));
 
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_GOST) {
+        const mbedtls_pk_context *peer_pk;
+
+#if !defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
+        peer_pk = &ssl->handshake->peer_pubkey;
+#else
+        if (ssl->session_negotiate->peer_cert == NULL)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        peer_pk = &ssl->session_negotiate->peer_cert->pk;
+#endif
+        header_len = 4;
+        ret = mbedtls_gost_key_transport_write(
+            ssl->out_msg + header_len,
+            MBEDTLS_SSL_OUT_CONTENT_LEN - header_len,
+            &content_len, ssl->handshake->premaster, peer_pk,
+            ssl->handshake->randbytes, ssl->conf->f_rng, ssl->conf->p_rng);
+        if (ret != 0) {
+            MBEDTLS_SSL_DEBUG_RET(1, "GOST key transport", ret);
+            return ret;
+        }
+        ssl->handshake->pmslen = 32;
+    } else
+#endif
+
 #if defined(MBEDTLS_KEY_EXCHANGE_DHE_RSA_ENABLED)
     if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_DHE_RSA) {
         /*
@@ -3240,7 +3274,7 @@ static int ssl_write_certificate_verify(mbedtls_ssl_context *ssl)
     const mbedtls_ssl_ciphersuite_t *ciphersuite_info =
         ssl->handshake->ciphersuite_info;
     size_t n = 0, offset = 0;
-    unsigned char hash[48];
+    unsigned char hash[64];
     unsigned char *hash_start = hash;
     mbedtls_md_type_t md_alg = MBEDTLS_MD_NONE;
     size_t hashlen;
@@ -3294,6 +3328,13 @@ static int ssl_write_certificate_verify(mbedtls_ssl_context *ssl)
 sign:
 #endif
 
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
+        MBEDTLS_PK_GOST3410_512 &&
+        mbedtls_ssl_set_calc_verify_md(ssl, MBEDTLS_SSL_HASH_INTRINSIC) != 0)
+        return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+#endif
+
     ret = ssl->handshake->calc_verify(ssl, hash, &hashlen);
     if (0 != ret) {
         MBEDTLS_SSL_DEBUG_RET(1, ("calc_verify"), ret);
@@ -3316,7 +3357,11 @@ sign:
      *         SHA224 in order to satisfy 'weird' needs from the server
      *         side.
      */
-    if (ssl->handshake->ciphersuite_info->mac == MBEDTLS_MD_SHA384) {
+    if (mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
+        MBEDTLS_PK_GOST3410_512) {
+        md_alg = MBEDTLS_MD_STREEBOG512;
+        ssl->out_msg[4] = MBEDTLS_SSL_HASH_INTRINSIC;
+    } else if (ssl->handshake->ciphersuite_info->mac == MBEDTLS_MD_SHA384) {
         md_alg = MBEDTLS_MD_SHA384;
         ssl->out_msg[4] = MBEDTLS_SSL_HASH_SHA384;
     } else {
@@ -3326,7 +3371,8 @@ sign:
     ssl->out_msg[5] = mbedtls_ssl_sig_from_pk(mbedtls_ssl_own_key(ssl));
 
     /* Info from md_alg will be used instead */
-    hashlen = 0;
+    if (md_alg != MBEDTLS_MD_STREEBOG512)
+        hashlen = 0;
     offset = 2;
 
 #if defined(MBEDTLS_SSL_ECP_RESTARTABLE_ENABLED)
@@ -3349,6 +3395,19 @@ sign:
 #endif
         return ret;
     }
+
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (md_alg == MBEDTLS_MD_STREEBOG512) {
+        size_t i;
+
+        for (i = 0; i < n / 2; i++) {
+            unsigned char tmp = ssl->out_msg[6 + offset + i];
+
+            ssl->out_msg[6 + offset + i] = ssl->out_msg[6 + offset + n - 1 - i];
+            ssl->out_msg[6 + offset + n - 1 - i] = tmp;
+        }
+    }
+#endif
 
     MBEDTLS_PUT_UINT16_BE(n, ssl->out_msg, offset + 4);
 

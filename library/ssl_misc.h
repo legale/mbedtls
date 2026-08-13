@@ -903,6 +903,10 @@ struct mbedtls_ssl_handshake_params {
     mbedtls_md_context_t fin_sha384;
 #endif
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+    mbedtls_md_context_t fin_gost256;
+    mbedtls_md_context_t fin_gost512;
+#endif
 
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
     uint16_t offered_group_id; /* The NamedGroup value for the group
@@ -1093,6 +1097,14 @@ struct mbedtls_ssl_transform {
 
     unsigned char iv_enc[16];           /*!<  IV (encryption)         */
     unsigned char iv_dec[16];           /*!<  IV (decryption)         */
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+    unsigned char gost_key_enc[32];
+    unsigned char gost_key_dec[32];
+    unsigned char gost_mac_enc[32];
+    unsigned char gost_mac_dec[32];
+    unsigned char gost;
+#endif
 
 #if defined(MBEDTLS_SSL_SOME_SUITES_USE_MAC)
 
@@ -2466,6 +2478,11 @@ static inline int mbedtls_ssl_tls12_sig_alg_is_supported(
             break;
 #endif
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_SSL_HASH_INTRINSIC:
+            break;
+#endif
+
         default:
             return 0;
     }
@@ -2478,6 +2495,11 @@ static inline int mbedtls_ssl_tls12_sig_alg_is_supported(
 
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ALLOWED_ENABLED)
         case MBEDTLS_SSL_SIG_ECDSA:
+            break;
+#endif
+
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+        case MBEDTLS_SSL_SIG_GOST512:
             break;
 #endif
 
