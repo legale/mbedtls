@@ -118,6 +118,7 @@ extern const mbedtls_pk_info_t mbedtls_ecdsa_info;
 #endif
 
 #if defined(MBEDTLS_LIBPOGOST_C)
+extern const mbedtls_pk_info_t mbedtls_gost3410_256_info;
 extern const mbedtls_pk_info_t mbedtls_gost3410_512_info;
 #endif
 

@@ -68,6 +68,7 @@
 #define MBEDTLS_ASN1_NULL                    0x05
 #define MBEDTLS_ASN1_OID                     0x06
 #define MBEDTLS_ASN1_ENUMERATED              0x0A
+#define MBEDTLS_ASN1_NUMERIC_STRING          0x12
 #define MBEDTLS_ASN1_UTF8_STRING             0x0C
 #define MBEDTLS_ASN1_SEQUENCE                0x10
 #define MBEDTLS_ASN1_SET                     0x11
@@ -87,6 +88,7 @@
 #define MBEDTLS_ASN1_IS_STRING_TAG(tag)                                \
     ((unsigned int) (tag) < 32u && (                                   \
          ((1u << (tag)) & ((1u << MBEDTLS_ASN1_BMP_STRING)       |     \
+                           (1u << MBEDTLS_ASN1_NUMERIC_STRING)   |     \
                            (1u << MBEDTLS_ASN1_UTF8_STRING)      |     \
                            (1u << MBEDTLS_ASN1_T61_STRING)       |     \
                            (1u << MBEDTLS_ASN1_IA5_STRING)       |     \

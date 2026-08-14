@@ -2475,6 +2475,7 @@ static int ssl_write_certificate_request(mbedtls_ssl_context *ssl)
     p[1 + ct_len++] = MBEDTLS_SSL_CERT_TYPE_ECDSA_SIGN;
 #endif
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    p[1 + ct_len++] = MBEDTLS_SSL_CERT_TYPE_GOST_SIGN256;
     p[1 + ct_len++] = MBEDTLS_SSL_CERT_TYPE_GOST_SIGN512;
 #endif
 
@@ -4236,6 +4237,12 @@ static int ssl_parse_certificate_verify(mbedtls_ssl_context *ssl)
         return MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER;
     }
 
+    if (pk_alg == MBEDTLS_PK_GOST3410_256) {
+        md_alg = MBEDTLS_MD_STREEBOG256;
+        if (mbedtls_ssl_set_calc_verify_md_gost(ssl, pk_alg) != 0)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+    }
+
     /*
      * Check the certificate's key type matches the signature alg
      */
@@ -4272,8 +4279,10 @@ static int ssl_parse_certificate_verify(mbedtls_ssl_context *ssl)
     const unsigned char *signature = ssl->in_msg + i;
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
     unsigned char gost_signature[128];
-    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
-        if (sig_len != sizeof(gost_signature))
+    if (pk_alg == MBEDTLS_PK_GOST3410_256 ||
+        pk_alg == MBEDTLS_PK_GOST3410_512) {
+        size_t gost_signature_len = pk_alg == MBEDTLS_PK_GOST3410_256 ? 64 : 128;
+        if (sig_len != gost_signature_len)
             return MBEDTLS_ERR_SSL_DECODE_ERROR;
         for (size_t j = 0; j < sig_len; j++)
             gost_signature[j] = signature[sig_len - 1 - j];

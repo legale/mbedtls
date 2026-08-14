@@ -91,6 +91,7 @@ const mbedtls_x509_crt_profile mbedtls_x509_crt_profile_default =
     MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_SHA384) |
     MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_SHA512)
 #if defined(MBEDTLS_LIBPOGOST_C)
+    | MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_STREEBOG256)
     | MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_STREEBOG512)
 #endif
     ,
@@ -120,6 +121,7 @@ const mbedtls_x509_crt_profile mbedtls_x509_crt_profile_next =
     MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_SHA384) |
     MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_SHA512)
 #if defined(MBEDTLS_LIBPOGOST_C)
+    | MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_STREEBOG256)
     | MBEDTLS_X509_ID_FLAG(MBEDTLS_MD_STREEBOG512)
 #endif
     ,
@@ -245,8 +247,10 @@ static int x509_profile_check_key(const mbedtls_x509_crt_profile *profile,
 #endif /* MBEDTLS_PK_HAVE_ECC_KEYS */
 
 #if defined(MBEDTLS_LIBPOGOST_C)
-    if (pk_alg == MBEDTLS_PK_GOST3410_512)
-        return mbedtls_pk_get_bitlen(pk) == 512 ? 0 : -1;
+    if (pk_alg == MBEDTLS_PK_GOST3410_256 ||
+        pk_alg == MBEDTLS_PK_GOST3410_512)
+        return mbedtls_pk_get_bitlen(pk) == (pk_alg == MBEDTLS_PK_GOST3410_256 ?
+                                             256 : 512) ? 0 : -1;
 #endif
 
     return -1;

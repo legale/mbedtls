@@ -110,6 +110,8 @@ const mbedtls_pk_info_t *mbedtls_pk_info_from_type(mbedtls_pk_type_t pk_type)
 {
     switch (pk_type) {
 #if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_PK_GOST3410_256:
+            return &mbedtls_gost3410_256_info;
         case MBEDTLS_PK_GOST3410_512:
             return &mbedtls_gost3410_512_info;
 #endif

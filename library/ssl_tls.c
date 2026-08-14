@@ -5178,6 +5178,8 @@ static uint16_t ssl_preset_default_sig_algs[] = {
 #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
 static uint16_t ssl_tls12_preset_default_sig_algs[] = {
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_GOST256,
+                                       MBEDTLS_SSL_HASH_INTRINSIC),
     MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_GOST512,
                                        MBEDTLS_SSL_HASH_INTRINSIC),
 #endif
@@ -5566,6 +5568,9 @@ unsigned char mbedtls_ssl_sig_from_pk(mbedtls_pk_context *pk)
     }
 #endif
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    if (mbedtls_pk_can_do(pk, MBEDTLS_PK_GOST3410_256)) {
+        return MBEDTLS_SSL_SIG_GOST256;
+    }
     if (mbedtls_pk_can_do(pk, MBEDTLS_PK_GOST3410_512)) {
         return MBEDTLS_SSL_SIG_GOST512;
     }
@@ -5581,6 +5586,8 @@ unsigned char mbedtls_ssl_sig_from_pk_alg(mbedtls_pk_type_t type)
         case MBEDTLS_PK_ECDSA:
         case MBEDTLS_PK_ECKEY:
             return MBEDTLS_SSL_SIG_ECDSA;
+        case MBEDTLS_PK_GOST3410_256:
+            return MBEDTLS_SSL_SIG_GOST256;
         case MBEDTLS_PK_GOST3410_512:
             return MBEDTLS_SSL_SIG_GOST512;
         default:
@@ -5600,6 +5607,8 @@ mbedtls_pk_type_t mbedtls_ssl_pk_alg_from_sig(unsigned char sig)
             return MBEDTLS_PK_ECDSA;
 #endif
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+        case MBEDTLS_SSL_SIG_GOST256:
+            return MBEDTLS_PK_GOST3410_256;
         case MBEDTLS_SSL_SIG_GOST512:
             return MBEDTLS_PK_GOST3410_512;
 #endif
@@ -6847,6 +6856,20 @@ int mbedtls_ssl_set_calc_verify_md(mbedtls_ssl_context *ssl, int md)
     (void) ssl;
 #endif
     return 0;
+}
+
+int mbedtls_ssl_set_calc_verify_md_gost(mbedtls_ssl_context *ssl,
+                                        mbedtls_pk_type_t type)
+{
+    if (type == MBEDTLS_PK_GOST3410_256) {
+        ssl->handshake->calc_verify = ssl_calc_verify_tls_gost256;
+        return 0;
+    }
+    if (type == MBEDTLS_PK_GOST3410_512) {
+        ssl->handshake->calc_verify = ssl_calc_verify_tls_gost512;
+        return 0;
+    }
+    return -1;
 }
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)

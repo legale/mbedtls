@@ -3329,9 +3329,12 @@ sign:
 #endif
 
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
-    if (mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
-        MBEDTLS_PK_GOST3410_512 &&
-        mbedtls_ssl_set_calc_verify_md(ssl, MBEDTLS_SSL_HASH_INTRINSIC) != 0)
+    if ((mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
+         MBEDTLS_PK_GOST3410_256 ||
+         mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
+         MBEDTLS_PK_GOST3410_512) &&
+        mbedtls_ssl_set_calc_verify_md_gost(
+            ssl, mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl))) != 0)
         return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 #endif
 
@@ -3361,6 +3364,10 @@ sign:
         MBEDTLS_PK_GOST3410_512) {
         md_alg = MBEDTLS_MD_STREEBOG512;
         ssl->out_msg[4] = MBEDTLS_SSL_HASH_INTRINSIC;
+    } else if (mbedtls_pk_get_type(mbedtls_ssl_own_key(ssl)) ==
+               MBEDTLS_PK_GOST3410_256) {
+        md_alg = MBEDTLS_MD_STREEBOG256;
+        ssl->out_msg[4] = MBEDTLS_SSL_HASH_INTRINSIC;
     } else if (ssl->handshake->ciphersuite_info->mac == MBEDTLS_MD_SHA384) {
         md_alg = MBEDTLS_MD_SHA384;
         ssl->out_msg[4] = MBEDTLS_SSL_HASH_SHA384;
@@ -3371,7 +3378,8 @@ sign:
     ssl->out_msg[5] = mbedtls_ssl_sig_from_pk(mbedtls_ssl_own_key(ssl));
 
     /* Info from md_alg will be used instead */
-    if (md_alg != MBEDTLS_MD_STREEBOG512)
+    if (md_alg != MBEDTLS_MD_STREEBOG256 &&
+        md_alg != MBEDTLS_MD_STREEBOG512)
         hashlen = 0;
     offset = 2;
 

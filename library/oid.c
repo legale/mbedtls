@@ -380,6 +380,12 @@ static const oid_sig_alg_t oid_sig_alg[] =
 {
 #if defined(MBEDTLS_LIBPOGOST_C)
     {
+        OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_WITH_STREEBOG_256,
+                       "gost3410-2012-256-with-streebog256",
+                       "GOST R 34.10-2012 with Streebog-256"),
+        MBEDTLS_MD_STREEBOG256, MBEDTLS_PK_GOST3410_256,
+    },
+    {
         OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_WITH_STREEBOG_512,
                        "gost3410-2012-512-with-streebog512",
                        "GOST R 34.10-2012 with Streebog-512"),
@@ -514,6 +520,11 @@ typedef struct {
 static const oid_pk_alg_t oid_pk_alg[] =
 {
 #if defined(MBEDTLS_LIBPOGOST_C)
+    {
+        OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_2012_256,
+                       "gost3410-2012-256", "GOST R 34.10-2012 256"),
+        MBEDTLS_PK_GOST3410_256,
+    },
     {
         OID_DESCRIPTOR(MBEDTLS_OID_GOST3410_2012_512,
                        "gost3410-2012-512", "GOST R 34.10-2012 512"),

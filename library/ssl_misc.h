@@ -1551,6 +1551,8 @@ unsigned char mbedtls_ssl_hash_from_md_alg(int md);
 #if defined(MBEDTLS_SSL_PROTO_TLS1_2)
 MBEDTLS_CHECK_RETURN_CRITICAL
 int mbedtls_ssl_set_calc_verify_md(mbedtls_ssl_context *ssl, int md);
+int mbedtls_ssl_set_calc_verify_md_gost(mbedtls_ssl_context *ssl,
+                                        mbedtls_pk_type_t type);
 #endif
 
 MBEDTLS_CHECK_RETURN_CRITICAL
@@ -2499,6 +2501,8 @@ static inline int mbedtls_ssl_tls12_sig_alg_is_supported(
 #endif
 
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+        case MBEDTLS_SSL_SIG_GOST256:
+            break;
         case MBEDTLS_SSL_SIG_GOST512:
             break;
 #endif

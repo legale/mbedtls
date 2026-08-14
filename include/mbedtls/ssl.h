@@ -445,6 +445,7 @@
 #define MBEDTLS_SSL_SIG_ANON                 0
 #define MBEDTLS_SSL_SIG_RSA                  1
 #define MBEDTLS_SSL_SIG_ECDSA                3
+#define MBEDTLS_SSL_SIG_GOST256              64
 #define MBEDTLS_SSL_SIG_GOST512              65
 
 /*
@@ -488,6 +489,7 @@
  */
 #define MBEDTLS_SSL_CERT_TYPE_RSA_SIGN       1
 #define MBEDTLS_SSL_CERT_TYPE_ECDSA_SIGN    64
+#define MBEDTLS_SSL_CERT_TYPE_GOST_SIGN256  67
 #define MBEDTLS_SSL_CERT_TYPE_GOST_SIGN512  68
 
 /*

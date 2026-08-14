@@ -926,7 +926,8 @@ int mbedtls_pk_parse_subpubkey(unsigned char **p, const unsigned char *end,
     } else
 #endif /* MBEDTLS_RSA_C */
 #if defined(MBEDTLS_LIBPOGOST_C)
-    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
+    if (pk_alg == MBEDTLS_PK_GOST3410_256 ||
+        pk_alg == MBEDTLS_PK_GOST3410_512) {
         ret = mbedtls_gost3410_parse_public(pk, &alg_params,
                                             *p, (size_t) (end - *p));
         *p = (unsigned char *) end;
@@ -1373,7 +1374,8 @@ static int pk_parse_key_pkcs8_unencrypted_der(
     } else
 #endif /* MBEDTLS_RSA_C */
 #if defined(MBEDTLS_LIBPOGOST_C)
-    if (pk_alg == MBEDTLS_PK_GOST3410_512) {
+    if (pk_alg == MBEDTLS_PK_GOST3410_256 ||
+        pk_alg == MBEDTLS_PK_GOST3410_512) {
         if ((ret = mbedtls_gost3410_parse_private(pk, &params, p, len)) != 0) {
             mbedtls_pk_free(pk);
             return ret;
