@@ -114,6 +114,8 @@
 /* TC26 algorithms: 1.2.643.7.1. */
 #define MBEDTLS_OID_TC26                        "\x2a\x85\x03\x07\x01"
 #define MBEDTLS_OID_GOST3410_2012_256           MBEDTLS_OID_TC26 "\x01\x01\x01"
+#define MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A \
+        MBEDTLS_OID_TC26 "\x02\x01\x01\x01"
 #define MBEDTLS_OID_GOST3410_2012_512           MBEDTLS_OID_TC26 "\x01\x01\x02"
 #define MBEDTLS_OID_STREEBOG_256                MBEDTLS_OID_TC26 "\x01\x02\x02"
 #define MBEDTLS_OID_STREEBOG_512                MBEDTLS_OID_TC26 "\x01\x02\x03"

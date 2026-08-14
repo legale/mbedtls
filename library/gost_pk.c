@@ -24,6 +24,7 @@ struct mbedtls_gost3410_context {
   size_t signature_size;
   size_t digest_size;
   mbedtls_pk_type_t type;
+  int tc26;
   int has_private;
 };
 
@@ -48,7 +49,7 @@ static int gost_ctx_set_type(struct mbedtls_gost3410_context *ctx,
 }
 
 static int gost_params_valid(const mbedtls_asn1_buf *params,
-                             mbedtls_pk_type_t type)
+                             mbedtls_pk_type_t type, int *tc26)
 {
   unsigned char *p;
   const unsigned char *end;
@@ -63,22 +64,30 @@ static int gost_params_valid(const mbedtls_asn1_buf *params,
     paramset_alt = MBEDTLS_OID_GOST3410_2001_CRYPTOPRO_A_PARAMSET;
     paramset_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2001_CRYPTOPRO_XCHA_PARAMSET);
     digest = MBEDTLS_OID_STREEBOG_256;
+    *tc26 = 0;
   } else {
     paramset = MBEDTLS_OID_GOST3410_2012_512_PARAMSET_A;
     paramset_alt = NULL;
     paramset_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_512_PARAMSET_A);
     digest = MBEDTLS_OID_STREEBOG_512;
+    *tc26 = 0;
   }
   if (params->tag != (MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
     return 0;
 
   p = params->p;
   end = p + params->len;
-  if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_OID) != 0 ||
-      len != paramset_len ||
-      (memcmp(p, paramset, len) != 0 &&
-       (paramset_alt == NULL || memcmp(p, paramset_alt, len) != 0)))
+  if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_OID) != 0)
     return 0;
+  if (type == MBEDTLS_PK_GOST3410_256 &&
+      len == MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A) &&
+      memcmp(p, MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A, len) == 0) {
+    *tc26 = 1;
+  } else if (len != paramset_len ||
+             (memcmp(p, paramset, len) != 0 &&
+              (paramset_alt == NULL || memcmp(p, paramset_alt, len) != 0))) {
+    return 0;
+  }
   p += len;
 
   if (p == end)
@@ -105,7 +114,7 @@ int mbedtls_gost3410_parse_public(mbedtls_pk_context *pk, const mbedtls_asn1_buf
   size_t len;
 
   if (gost_ctx_set_type(ctx, pk->pk_info->type) != 0 ||
-      !gost_params_valid(params, ctx->type))
+      !gost_params_valid(params, ctx->type, &ctx->tc26))
     return MBEDTLS_ERR_PK_INVALID_PUBKEY;
 
   if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_OCTET_STRING) != 0 ||
@@ -122,12 +131,14 @@ int mbedtls_gost3410_parse_private(mbedtls_pk_context *pk, const mbedtls_asn1_bu
   struct mbedtls_gost3410_context *ctx = pk->pk_ctx;
 
   if (gost_ctx_set_type(ctx, pk->pk_info->type) != 0 ||
-      !gost_params_valid(params, ctx->type) || key_len != ctx->key_size)
+      !gost_params_valid(params, ctx->type, &ctx->tc26) || key_len != ctx->key_size)
     return MBEDTLS_ERR_PK_KEY_INVALID_FORMAT;
 
   memcpy(ctx->private_key, key, key_len);
-  if ((ctx->type == MBEDTLS_PK_GOST3410_256 &&
+  if ((ctx->type == MBEDTLS_PK_GOST3410_256 && !ctx->tc26 &&
        gost3410_256a_public(ctx->public_key, ctx->private_key) != 0) ||
+      (ctx->type == MBEDTLS_PK_GOST3410_256 && ctx->tc26 &&
+       gost3410_256tc26a_public(ctx->public_key, ctx->private_key) != 0) ||
       (ctx->type == MBEDTLS_PK_GOST3410_512 &&
        gost3410_512a_public(ctx->public_key, ctx->private_key) != 0)) {
     mbedtls_platform_zeroize(ctx->private_key, sizeof(ctx->private_key));
@@ -190,6 +201,9 @@ static int gost_verify(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg, const u
       hash_len != ctx->digest_size || sig_len != ctx->signature_size)
     return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
 
+  if (ctx->type == MBEDTLS_PK_GOST3410_256 && ctx->tc26)
+    return gost3410_256tc26a_verify(ctx->public_key, hash, sig) == 0 ?
+           0 : MBEDTLS_ERR_PK_BAD_INPUT_DATA;
   if (ctx->type == MBEDTLS_PK_GOST3410_256)
     return gost3410_256a_verify(ctx->public_key, hash, sig) == 0 ?
            0 : MBEDTLS_ERR_PK_BAD_INPUT_DATA;
@@ -216,7 +230,9 @@ static int gost_sign(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg, const uns
   for (i = 0; i < 32; i++) {
     if (f_rng(p_rng, nonce, sizeof(nonce)) != 0)
       break;
-    if ((ctx->type == MBEDTLS_PK_GOST3410_256 &&
+    if ((ctx->type == MBEDTLS_PK_GOST3410_256 && ctx->tc26 &&
+         gost3410_256tc26a_sign(sig, hash, ctx->private_key, nonce) == 0) ||
+        (ctx->type == MBEDTLS_PK_GOST3410_256 && !ctx->tc26 &&
          gost3410_256a_sign(sig, hash, ctx->private_key, nonce) == 0) ||
         (ctx->type == MBEDTLS_PK_GOST3410_512 &&
          gost3410_512a_sign(sig, hash, ctx->private_key, nonce) == 0)) {
@@ -238,7 +254,8 @@ static int gost_check_pair(mbedtls_pk_context *pub, mbedtls_pk_context *prv,
   (void)f_rng;
   (void)p_rng;
   if (!prv_ctx->has_private || pub_ctx->type != prv_ctx->type ||
-      memcmp(pub_ctx->public_key, prv_ctx->public_key, sizeof(pub_ctx->public_key)) != 0)
+      pub_ctx->tc26 != prv_ctx->tc26 ||
+      memcmp(pub_ctx->public_key, prv_ctx->public_key, pub_ctx->public_size) != 0)
     return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
   return 0;
 }

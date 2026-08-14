@@ -96,7 +96,8 @@ int mbedtls_gost_key_transport_write(unsigned char *out, size_t out_size, size_t
   if (out == NULL || out_len == NULL || pms == NULL || server_key == NULL || random == NULL ||
       f_rng == NULL)
     return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
-  if (mbedtls_gost3410_get_public(server_key, server_public) != 0)
+  ret = mbedtls_gost3410_get_public(server_key, server_public);
+  if (ret != 0)
     goto out;
   for (i = 0; i < 32; i++) {
     if (f_rng(p_rng, eph_private, sizeof(eph_private)) != 0)
