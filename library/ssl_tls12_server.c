@@ -742,6 +742,14 @@ static int ssl_pick_cert(mbedtls_ssl_context *ssl,
 #endif /* MBEDTLS_SSL_ASYNC_PRIVATE */
 #else
         key_type_matches = mbedtls_pk_can_do(&cur->cert->pk, pk_alg);
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+        if (ciphersuite_info->key_exchange == MBEDTLS_KEY_EXCHANGE_GOST) {
+            mbedtls_pk_type_t type = mbedtls_pk_get_type(&cur->cert->pk);
+
+            key_type_matches = type == MBEDTLS_PK_GOST3410_256 ||
+                               type == MBEDTLS_PK_GOST3410_512;
+        }
+#endif
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
         if (!key_type_matches) {
             MBEDTLS_SSL_DEBUG_MSG(3, ("certificate mismatch: key type"));

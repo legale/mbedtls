@@ -11,5 +11,7 @@ int mbedtls_gost3410_parse_private(mbedtls_pk_context *pk, const mbedtls_asn1_bu
                                    const unsigned char *key, size_t key_len);
 int mbedtls_gost3410_get_public(const mbedtls_pk_context *pk, unsigned char public_key[128]);
 int mbedtls_gost3410_get_private(const mbedtls_pk_context *pk, unsigned char private_key[64]);
+int mbedtls_gost3410_get_meta(const mbedtls_pk_context *pk,
+                              size_t *key_size, size_t *public_size, int *tc26);
 
 #endif

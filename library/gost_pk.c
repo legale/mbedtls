@@ -152,11 +152,13 @@ int mbedtls_gost3410_get_public(const mbedtls_pk_context *pk, unsigned char publ
 {
   const struct mbedtls_gost3410_context *ctx;
 
-  if (pk == NULL || pk->pk_info != &mbedtls_gost3410_512_info || pk->pk_ctx == NULL ||
-      public_key == NULL)
+  if (pk == NULL || pk->pk_ctx == NULL || public_key == NULL ||
+      (pk->pk_info != &mbedtls_gost3410_256_info &&
+       pk->pk_info != &mbedtls_gost3410_512_info))
     return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
   ctx = pk->pk_ctx;
-  memcpy(public_key, ctx->public_key, sizeof(ctx->public_key));
+  memset(public_key, 0, GOST3410_512_PUBLIC_SIZE);
+  memcpy(public_key, ctx->public_key, ctx->public_size);
   return 0;
 }
 
@@ -164,13 +166,32 @@ int mbedtls_gost3410_get_private(const mbedtls_pk_context *pk, unsigned char pri
 {
   const struct mbedtls_gost3410_context *ctx;
 
-  if (pk == NULL || pk->pk_info != &mbedtls_gost3410_512_info || pk->pk_ctx == NULL ||
-      private_key == NULL)
+  if (pk == NULL || pk->pk_ctx == NULL || private_key == NULL ||
+      (pk->pk_info != &mbedtls_gost3410_256_info &&
+       pk->pk_info != &mbedtls_gost3410_512_info))
     return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
   ctx = pk->pk_ctx;
   if (!ctx->has_private)
     return MBEDTLS_ERR_PK_TYPE_MISMATCH;
-  memcpy(private_key, ctx->private_key, sizeof(ctx->private_key));
+  memset(private_key, 0, GOST3410_512_KEY_SIZE);
+  memcpy(private_key, ctx->private_key, ctx->key_size);
+  return 0;
+}
+
+int mbedtls_gost3410_get_meta(const mbedtls_pk_context *pk,
+                              size_t *key_size, size_t *public_size, int *tc26)
+{
+  const struct mbedtls_gost3410_context *ctx;
+
+  if (pk == NULL || pk->pk_ctx == NULL || key_size == NULL ||
+      public_size == NULL || tc26 == NULL ||
+      (pk->pk_info != &mbedtls_gost3410_256_info &&
+       pk->pk_info != &mbedtls_gost3410_512_info))
+    return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+  ctx = pk->pk_ctx;
+  *key_size = ctx->key_size;
+  *public_size = ctx->public_size;
+  *tc26 = ctx->tc26;
   return 0;
 }
 

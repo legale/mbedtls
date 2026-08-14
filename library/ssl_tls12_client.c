@@ -3405,7 +3405,8 @@ sign:
     }
 
 #if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
-    if (md_alg == MBEDTLS_MD_STREEBOG512) {
+    if (md_alg == MBEDTLS_MD_STREEBOG256 ||
+        md_alg == MBEDTLS_MD_STREEBOG512) {
         size_t i;
 
         for (i = 0; i < n / 2; i++) {
