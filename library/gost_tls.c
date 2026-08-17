@@ -26,10 +26,10 @@ static int gost_write_spki(unsigned char *buf, size_t size,
 {
   const char *alg_oid;
   const char *param_oid;
-  const char *digest_oid;
+  const char *digest_oid = NULL;
   size_t alg_oid_len;
   size_t param_oid_len;
-  size_t digest_oid_len;
+  size_t digest_oid_len = 0;
   unsigned char *p = buf + size;
   size_t len = 0;
   size_t alg_len = 0;
@@ -41,8 +41,6 @@ static int gost_write_spki(unsigned char *buf, size_t size,
     alg_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256);
     param_oid = MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A;
     param_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A);
-    digest_oid = MBEDTLS_OID_STREEBOG_256;
-    digest_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_STREEBOG_256);
   } else if (type == MBEDTLS_PK_GOST3410_512) {
     alg_oid = MBEDTLS_OID_GOST3410_2012_512;
     alg_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_512);
@@ -64,8 +62,9 @@ static int gost_write_spki(unsigned char *buf, size_t size,
   MBEDTLS_ASN1_CHK_ADD(len, mbedtls_asn1_write_len(&p, buf, len));
   MBEDTLS_ASN1_CHK_ADD(len, mbedtls_asn1_write_tag(&p, buf, MBEDTLS_ASN1_BIT_STRING));
 
-  MBEDTLS_ASN1_CHK_ADD(par_len, mbedtls_asn1_write_oid(&p, buf, digest_oid,
-                                                       digest_oid_len));
+  if (digest_oid != NULL)
+    MBEDTLS_ASN1_CHK_ADD(par_len, mbedtls_asn1_write_oid(&p, buf, digest_oid,
+                                                         digest_oid_len));
   MBEDTLS_ASN1_CHK_ADD(par_len, mbedtls_asn1_write_oid(&p, buf, param_oid,
                                                        param_oid_len));
   MBEDTLS_ASN1_CHK_ADD(par_len, mbedtls_asn1_write_len(&p, buf, par_len));
@@ -271,3 +270,4 @@ out:
 }
 
 #endif
+
