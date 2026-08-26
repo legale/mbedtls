@@ -39,9 +39,6 @@ static const int ciphersuite_preference[] =
 #if defined(MBEDTLS_SSL_CIPHERSUITES)
     MBEDTLS_SSL_CIPHERSUITES,
 #else
-#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED) && defined(MBEDTLS_LIBPOGOST_C)
-    MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_CTR_OMAC,
-#endif
 #if defined(MBEDTLS_SSL_PROTO_TLS1_3)
     /* TLS 1.3 ciphersuites */
     MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
