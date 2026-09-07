@@ -9,15 +9,10 @@
 /*
  * Ensure gmtime_r is available even with -std=c99; must be defined before
  * mbedtls_config.h, which pulls in glibc's features.h. Harmless on other platforms
- * except OpenBSD, where it stops us accessing explicit_bzero.
+ * except OpenBSD.
  */
 #if !defined(_POSIX_C_SOURCE) && !defined(__OpenBSD__)
 #define _POSIX_C_SOURCE 200112L
-#endif
-
-#if !defined(_GNU_SOURCE)
-/* Clang requires this to get support for explicit_bzero */
-#define _GNU_SOURCE
 #endif
 
 #include "common.h"
@@ -37,13 +32,6 @@
 #include <windows.h>
 #endif
 
-// Detect platforms known to support explicit_bzero()
-#if defined(__GLIBC__) && (__GLIBC__ >= 2) && (__GLIBC_MINOR__ >= 25)
-#define MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO 1
-#elif (defined(__FreeBSD__) && (__FreeBSD_version >= 1100037)) || defined(__OpenBSD__)
-#define MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO 1
-#endif
-
 #if !defined(MBEDTLS_PLATFORM_ZEROIZE_ALT)
 
 #undef HAVE_MEMORY_SANITIZER
@@ -55,12 +43,9 @@
 #endif
 
 /*
- * Where possible, we try to detect the presence of a platform-provided
- * secure memset, such as explicit_bzero(), that is safe against being optimized
- * out, and use that.
- *
- * For other platforms, we provide an implementation that aims not to be
- * optimized out by the compiler.
+ * Use the local implementation on every platform.  Do not call
+ * explicit_bzero(): old glibc headers can expose the declaration while the
+ * target runtime does not provide the symbol.
  *
  * This implementation for mbedtls_platform_zeroize() was inspired from Colin
  * Percival's blog article at:
