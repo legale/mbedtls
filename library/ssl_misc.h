@@ -754,6 +754,9 @@ struct mbedtls_ssl_handshake_params {
     unsigned char xxdh_psa_peerkey[PSA_EXPORT_PUBLIC_KEY_MAX_SIZE];
     size_t xxdh_psa_peerkey_len;
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_XXDH_PSA_ANY_ENABLED */
+#if defined(MBEDTLS_LIBPOGOST_C)
+    unsigned char gost_ecdh_privkey[32];
+#endif
 
 #if defined(MBEDTLS_KEY_EXCHANGE_ECJPAKE_ENABLED)
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
@@ -2215,6 +2218,10 @@ static inline int mbedtls_ssl_tls12_named_group_is_ecdhe(uint16_t named_group)
 
 static inline int mbedtls_ssl_tls13_named_group_is_ecdhe(uint16_t named_group)
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (named_group == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A)
+        return 1;
+#endif
     return named_group == MBEDTLS_SSL_IANA_TLS_GROUP_X25519    ||
            named_group == MBEDTLS_SSL_IANA_TLS_GROUP_SECP256R1 ||
            named_group == MBEDTLS_SSL_IANA_TLS_GROUP_SECP384R1 ||
@@ -2248,6 +2255,10 @@ static inline int mbedtls_ssl_named_group_is_offered(
 
 static inline int mbedtls_ssl_named_group_is_supported(uint16_t named_group)
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (named_group == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A)
+        return 1;
+#endif
 #if defined(PSA_WANT_ALG_ECDH)
     if (mbedtls_ssl_tls13_named_group_is_ecdhe(named_group)) {
         if (mbedtls_ssl_get_ecp_group_id_from_tls_id(named_group) !=
@@ -2321,6 +2332,10 @@ static inline int mbedtls_ssl_tls13_sig_alg_for_cert_verify_is_supported(
     const uint16_t sig_alg)
 {
     switch (sig_alg) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A:
+            break;
+#endif
 #if defined(MBEDTLS_PK_CAN_ECDSA_SOME)
 #if defined(PSA_WANT_ALG_SHA_256) && defined(PSA_WANT_ECC_SECP_R1_256)
         case MBEDTLS_TLS1_3_SIG_ECDSA_SECP256R1_SHA256:
@@ -2415,6 +2430,12 @@ static inline int mbedtls_ssl_get_pk_type_and_md_alg_from_sig_alg(
     }
 
     switch (sig_alg) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A:
+            *pk_type = MBEDTLS_PK_GOST3410_256;
+            *md_alg = MBEDTLS_MD_STREEBOG256;
+            return 0;
+#endif
 #if defined(MBEDTLS_PKCS1_V21)
 #if defined(MBEDTLS_MD_CAN_SHA256)
         case MBEDTLS_TLS1_3_SIG_RSA_PSS_RSAE_SHA256:

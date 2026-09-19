@@ -1454,6 +1454,10 @@ int mbedtls_ssl_setup(mbedtls_ssl_context *ssl,
 
     ssl->conf = conf;
 
+#if defined(MBEDTLS_PSA_CRYPTO_C)
+    psa_crypto_init();
+#endif
+
     if ((ret = ssl_conf_check(ssl)) != 0) {
         return ret;
     }
@@ -5068,6 +5072,9 @@ void mbedtls_ssl_config_init(mbedtls_ssl_config *conf)
  * about this list.
  */
 static uint16_t ssl_preset_default_groups[] = {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    MBEDTLS_SSL_IANA_TLS_GROUP_GC256A,
+#endif
 #if defined(MBEDTLS_ECP_HAVE_CURVE25519)
     MBEDTLS_SSL_IANA_TLS_GROUP_X25519,
 #endif
@@ -5119,6 +5126,9 @@ static const int ssl_preset_suiteb_ciphersuites[] = {
  *   - ssl_preset_* is for TLS 1.3 only or hybrid TLS 1.3/1.2 handshakes.
  */
 static uint16_t ssl_preset_default_sig_algs[] = {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A,
+#endif
 
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED) && \
     defined(MBEDTLS_MD_CAN_SHA256) && \

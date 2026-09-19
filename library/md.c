@@ -232,6 +232,12 @@ static psa_algorithm_t psa_alg_of_md(const mbedtls_md_info_t *info)
         case MBEDTLS_MD_SHA256:
             return PSA_ALG_SHA_256;
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_MD_STREEBOG256:
+            return PSA_ALG_STREEBOG256;
+        case MBEDTLS_MD_STREEBOG512:
+            return PSA_ALG_STREEBOG512;
+#endif
 #if defined(MBEDTLS_MD_SHA384_VIA_PSA)
         case MBEDTLS_MD_SHA384:
             return PSA_ALG_SHA_384;

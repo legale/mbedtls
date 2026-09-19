@@ -180,6 +180,13 @@ static int ssl_tls13_reset_key_share(mbedtls_ssl_context *ssl)
         return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
     }
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (group_id == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A) {
+        mbedtls_platform_zeroize(ssl->handshake->gost_ecdh_privkey, sizeof(ssl->handshake->gost_ecdh_privkey));
+        return 0;
+    }
+#endif
+
 #if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED)
     if (mbedtls_ssl_tls13_named_group_is_ecdhe(group_id) ||
         mbedtls_ssl_tls13_named_group_is_ffdh(group_id)) {
@@ -224,6 +231,12 @@ static int ssl_tls13_get_default_group_id(mbedtls_ssl_context *ssl,
     }
 
     for (; *group_list != 0; group_list++) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        if (*group_list == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A) {
+            *group_id = *group_list;
+            return 0;
+        }
+#endif
 #if defined(PSA_WANT_ALG_ECDH)
         if ((mbedtls_ssl_get_psa_curve_info_from_tls_id(
                  *group_list, NULL, NULL) == PSA_SUCCESS) &&
@@ -404,6 +417,14 @@ static int ssl_tls13_parse_hrr_key_share_ext(mbedtls_ssl_context *ssl,
      * then the client MUST abort the handshake with an "illegal_parameter" alert.
      */
     for (; *group_list != 0; group_list++) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        if (*group_list == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A) {
+            if (*group_list == selected_group) {
+                found = 1;
+                break;
+            }
+        }
+#endif
 #if defined(PSA_WANT_ALG_ECDH)
         if (mbedtls_ssl_tls13_named_group_is_ecdhe(*group_list)) {
             if ((mbedtls_ssl_get_psa_curve_info_from_tls_id(

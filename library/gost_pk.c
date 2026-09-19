@@ -245,8 +245,11 @@ static int gost_sign(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg, const uns
       md_alg != (ctx->type == MBEDTLS_PK_GOST3410_256 ? MBEDTLS_MD_STREEBOG256 :
                  MBEDTLS_MD_STREEBOG512) ||
       hash_len != ctx->digest_size || sig_size < ctx->signature_size ||
-      f_rng == NULL)
+      f_rng == NULL) {
+    printf("GOST_SIGN ERROR: has_private=%d md_alg=%u ctx->type=%u hash_len=%zu ctx->digest_size=%zu sig_size=%zu ctx->signature_size=%zu f_rng=%p\n",
+           ctx->has_private, (unsigned)md_alg, (unsigned)ctx->type, hash_len, ctx->digest_size, sig_size, ctx->signature_size, f_rng);
     return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+  }
 
   for (i = 0; i < 32; i++) {
     if (f_rng(p_rng, nonce, sizeof(nonce)) != 0)

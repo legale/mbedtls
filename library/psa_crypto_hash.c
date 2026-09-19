@@ -16,6 +16,11 @@
 
 #include <mbedtls/error.h>
 #include <string.h>
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256) || \
+    defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+#include <libpogost/streebog.h>
+#define GOST_STREEBOG_CTX(op) ((struct streebog_ctx *)(op)->MBEDTLS_PRIVATE(ctx).streebog)
+#endif
 
 #if defined(MBEDTLS_PSA_BUILTIN_HASH)
 psa_status_t mbedtls_psa_hash_abort(
@@ -50,6 +55,13 @@ psa_status_t mbedtls_psa_hash_abort(
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_256)
         case PSA_ALG_SHA_256:
             mbedtls_sha256_free(&operation->ctx.sha256);
+            break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256) || \
+    defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+        case PSA_ALG_STREEBOG256:
+        case PSA_ALG_STREEBOG512:
+            mbedtls_platform_zeroize(GOST_STREEBOG_CTX(operation), sizeof(struct streebog_ctx));
             break;
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_384)
@@ -128,6 +140,18 @@ psa_status_t mbedtls_psa_hash_setup(
         case PSA_ALG_SHA_256:
             mbedtls_sha256_init(&operation->ctx.sha256);
             ret = mbedtls_sha256_starts(&operation->ctx.sha256, 0);
+            break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256)
+        case PSA_ALG_STREEBOG256:
+            streebog_init(GOST_STREEBOG_CTX(operation), 256);
+            ret = 0;
+            break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+        case PSA_ALG_STREEBOG512:
+            streebog_init(GOST_STREEBOG_CTX(operation), 512);
+            ret = 0;
             break;
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_384)
@@ -212,8 +236,17 @@ psa_status_t mbedtls_psa_hash_clone(
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_256)
         case PSA_ALG_SHA_256:
-            mbedtls_sha256_clone(&target_operation->ctx.sha256,
-                                 &source_operation->ctx.sha256);
+             mbedtls_sha256_clone(&target_operation->ctx.sha256,
+                                  &source_operation->ctx.sha256);
+             break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256) || \
+    defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+        case PSA_ALG_STREEBOG256:
+        case PSA_ALG_STREEBOG512:
+            memcpy(GOST_STREEBOG_CTX(target_operation),
+                   GOST_STREEBOG_CTX(source_operation),
+                   sizeof(struct streebog_ctx));
             break;
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_384)
@@ -294,6 +327,14 @@ psa_status_t mbedtls_psa_hash_update(
         case PSA_ALG_SHA_256:
             ret = mbedtls_sha256_update(&operation->ctx.sha256,
                                         input, input_length);
+            break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256) || \
+    defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+        case PSA_ALG_STREEBOG256:
+        case PSA_ALG_STREEBOG512:
+            streebog_update(GOST_STREEBOG_CTX(operation), input, input_length);
+            ret = 0;
             break;
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_384)
@@ -386,6 +427,14 @@ psa_status_t mbedtls_psa_hash_finish(
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_256)
         case PSA_ALG_SHA_256:
             ret = mbedtls_sha256_finish(&operation->ctx.sha256, hash);
+            break;
+#endif
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG256) || \
+    defined(MBEDTLS_PSA_BUILTIN_ALG_STREEBOG512)
+        case PSA_ALG_STREEBOG256:
+        case PSA_ALG_STREEBOG512:
+            streebog_final(GOST_STREEBOG_CTX(operation), hash);
+            ret = 0;
             break;
 #endif
 #if defined(MBEDTLS_PSA_BUILTIN_ALG_SHA_384)

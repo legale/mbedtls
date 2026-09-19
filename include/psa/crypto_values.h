@@ -910,6 +910,8 @@
 #define PSA_ALG_SHA_512_224                     ((psa_algorithm_t) 0x0200000c)
 /** SHA2-512/256 */
 #define PSA_ALG_SHA_512_256                     ((psa_algorithm_t) 0x0200000d)
+#define PSA_ALG_STREEBOG256                     ((psa_algorithm_t) 0x0200001c)
+#define PSA_ALG_STREEBOG512                     ((psa_algorithm_t) 0x0200001d)
 /** SHA3-224 */
 #define PSA_ALG_SHA3_224                        ((psa_algorithm_t) 0x02000010)
 /** SHA3-256 */

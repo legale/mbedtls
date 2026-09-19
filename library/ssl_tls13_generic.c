@@ -23,6 +23,9 @@
 #include "ssl_tls13_invasive.h"
 #include "ssl_tls13_keys.h"
 #include "ssl_debug_helpers.h"
+#if defined(MBEDTLS_LIBPOGOST_C)
+#include <libpogost/gost3410.h>
+#endif
 
 #include "psa/crypto.h"
 #include "psa_util_internal.h"
@@ -291,15 +294,27 @@ static int ssl_tls13_parse_certificate_verify(mbedtls_ssl_context *ssl,
     p += 2;
     MBEDTLS_SSL_CHK_BUF_READ_PTR(p, end, signature_len);
 
-    status = psa_hash_compute(hash_alg,
-                              verify_buffer,
-                              verify_buffer_len,
-                              verify_hash,
-                              sizeof(verify_hash),
-                              &verify_hash_len);
-    if (status != PSA_SUCCESS) {
-        MBEDTLS_SSL_DEBUG_RET(1, "hash computation PSA error", status);
-        goto error;
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (md_alg == MBEDTLS_MD_STREEBOG256 || md_alg == MBEDTLS_MD_STREEBOG512) {
+        const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(md_alg);
+        if (mbedtls_md(md_info, verify_buffer, verify_buffer_len, verify_hash) != 0) {
+            MBEDTLS_SSL_DEBUG_MSG(1, ("hash computation mbedtls_md error"));
+            goto error;
+        }
+        verify_hash_len = mbedtls_md_get_size(md_info);
+    } else
+#endif
+    {
+        status = psa_hash_compute(hash_alg,
+                                  verify_buffer,
+                                  verify_buffer_len,
+                                  verify_hash,
+                                  sizeof(verify_hash),
+                                  &verify_hash_len);
+        if (status != PSA_SUCCESS) {
+            MBEDTLS_SSL_DEBUG_RET(1, "hash computation PSA error", status);
+            goto error;
+        }
     }
 
     MBEDTLS_SSL_DEBUG_BUF(3, "verify hash", verify_hash, verify_hash_len);
@@ -955,10 +970,14 @@ cleanup:
 int mbedtls_ssl_tls13_check_sig_alg_cert_key_match(uint16_t sig_alg,
                                                    mbedtls_pk_context *key)
 {
-    mbedtls_pk_type_t pk_type = (mbedtls_pk_type_t) mbedtls_ssl_sig_from_pk(key);
+    int pk_type = mbedtls_ssl_sig_from_pk(key);
     size_t key_size = mbedtls_pk_get_bitlen(key);
 
     switch (pk_type) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        case MBEDTLS_SSL_SIG_GOST256:
+            return sig_alg == MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A;
+#endif
         case MBEDTLS_SSL_SIG_ECDSA:
             switch (key_size) {
                 case 256:
@@ -1074,14 +1093,24 @@ static int ssl_tls13_write_certificate_verify_body(mbedtls_ssl_context *ssl,
         }
 
         /* Hash verify buffer with indicated hash function */
-        psa_algorithm = mbedtls_md_psa_alg_from_type(md_alg);
-        status = psa_hash_compute(psa_algorithm,
-                                  verify_buffer,
-                                  verify_buffer_len,
-                                  verify_hash, sizeof(verify_hash),
-                                  &verify_hash_len);
-        if (status != PSA_SUCCESS) {
-            return PSA_TO_MBEDTLS_ERR(status);
+#if defined(MBEDTLS_LIBPOGOST_C)
+        if (md_alg == MBEDTLS_MD_STREEBOG256 || md_alg == MBEDTLS_MD_STREEBOG512) {
+            const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(md_alg);
+            if (mbedtls_md(md_info, verify_buffer, verify_buffer_len, verify_hash) != 0)
+                return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+            verify_hash_len = mbedtls_md_get_size(md_info);
+        } else
+#endif
+        {
+            psa_algorithm = mbedtls_md_psa_alg_from_type(md_alg);
+            status = psa_hash_compute(psa_algorithm,
+                                      verify_buffer,
+                                      verify_buffer_len,
+                                      verify_hash, sizeof(verify_hash),
+                                      &verify_hash_len);
+            if (status != PSA_SUCCESS) {
+                return PSA_TO_MBEDTLS_ERR(status);
+            }
         }
 
         MBEDTLS_SSL_DEBUG_BUF(3, "verify hash", verify_hash, verify_hash_len);
@@ -1581,6 +1610,21 @@ int mbedtls_ssl_tls13_generate_and_write_xxdh_key_exchange(
     psa_key_type_t key_type = PSA_KEY_TYPE_NONE;
     psa_algorithm_t alg = PSA_ALG_NONE;
     size_t buf_size = (size_t) (end - buf);
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (named_group == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A) {
+        if (buf_size < 64) {
+            return MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL;
+        }
+        do {
+            ret = ssl->conf->f_rng(ssl->conf->p_rng, handshake->gost_ecdh_privkey, 32);
+            if (ret != 0)
+                return ret;
+        } while (gost3410_256tc26a_public(buf, handshake->gost_ecdh_privkey) != 0);
+        *out_len = 64;
+        return 0;
+    }
+#endif
 
     MBEDTLS_SSL_DEBUG_MSG(1, ("Perform PSA-based ECDH/FFDH computation."));
 

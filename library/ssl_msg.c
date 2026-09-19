@@ -983,7 +983,7 @@ int mbedtls_ssl_encrypt_buf(mbedtls_ssl_context *ssl,
     }
 
 #if defined(MBEDTLS_LIBPOGOST_C)
-    if (transform->gost) {
+    if (transform->gost == 1) {
         unsigned char enc_key[32];
         unsigned char mac_key[32];
         unsigned char iv[8];
@@ -1071,6 +1071,31 @@ int mbedtls_ssl_encrypt_buf(mbedtls_ssl_context *ssl,
 #endif /* MBEDTLS_SSL_DTLS_CONNECTION_ID */
 
     post_avail = rec->buf_len - (rec->data_len + rec->data_offset);
+
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (transform->gost == 2) {
+        unsigned char round_key[32];
+        unsigned char nonce[16];
+
+        if (post_avail < 16)
+            return MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL;
+
+        if (gost_tls13_tlstree_kuznyechik_mgm_l(round_key, transform->gost_key_enc,
+                                                MBEDTLS_GET_UINT64_BE(rec->ctr, 0)) != 0)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        gost_tls13_make_nonce(nonce, transform->iv_enc,
+                              MBEDTLS_GET_UINT64_BE(rec->ctr, 0));
+        ssl_extract_add_data_from_record(add_data, &add_data_len, rec,
+                                         transform->tls_version, 16);
+        kuznyechik_mgm_encrypt(data, data + rec->data_len, round_key, nonce,
+                               add_data, add_data_len, data, rec->data_len);
+        rec->data_len += 16;
+        mbedtls_platform_zeroize(round_key, sizeof(round_key));
+        mbedtls_platform_zeroize(nonce, sizeof(nonce));
+        auth_done++;
+        goto ssl_encrypt_done;
+    }
+#endif /* MBEDTLS_LIBPOGOST_C */
 
     /*
      * Add MAC before if needed
@@ -1510,6 +1535,7 @@ hmac_failed_etm_enabled:
         return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
     }
 
+ssl_encrypt_done:
     /* Make extra sure authentication was performed, exactly once */
     if (auth_done != 1) {
         MBEDTLS_SSL_DEBUG_MSG(1, ("should never happen"));
@@ -1565,7 +1591,32 @@ int mbedtls_ssl_decrypt_buf(mbedtls_ssl_context const *ssl,
     ssl_mode = mbedtls_ssl_get_mode_from_transform(transform);
 
 #if defined(MBEDTLS_LIBPOGOST_C)
-    if (transform->gost) {
+    if (transform->gost == 2) {
+        unsigned char round_key[32];
+        unsigned char nonce[16];
+
+        if (rec->data_len < 16)
+            return MBEDTLS_ERR_SSL_INVALID_MAC;
+        rec->data_len -= 16;
+        if (gost_tls13_tlstree_kuznyechik_mgm_l(round_key, transform->gost_key_dec,
+                                                MBEDTLS_GET_UINT64_BE(rec->ctr, 0)) != 0)
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        gost_tls13_make_nonce(nonce, transform->iv_dec,
+                              MBEDTLS_GET_UINT64_BE(rec->ctr, 0));
+        ssl_extract_add_data_from_record(add_data, &add_data_len, rec,
+                                         transform->tls_version, 16);
+        if (kuznyechik_mgm_decrypt(data, round_key, nonce,
+                                   add_data, add_data_len,
+                                   data, rec->data_len, data + rec->data_len) != 0) {
+            mbedtls_platform_zeroize(round_key, sizeof(round_key));
+            mbedtls_platform_zeroize(nonce, sizeof(nonce));
+            return MBEDTLS_ERR_SSL_INVALID_MAC;
+        }
+        mbedtls_platform_zeroize(round_key, sizeof(round_key));
+        mbedtls_platform_zeroize(nonce, sizeof(nonce));
+        auth_done++;
+        goto ssl_decrypt_done;
+    } else if (transform->gost == 1) {
         unsigned char enc_key[32];
         unsigned char mac_key[32];
         unsigned char iv[8];
@@ -2167,6 +2218,7 @@ hmac_failed_etm_disabled:
 #endif /* MBEDTLS_SSL_SOME_SUITES_USE_MAC */
 
     /* Make extra sure authentication was performed, exactly once */
+ssl_decrypt_done:
     if (auth_done != 1) {
         MBEDTLS_SSL_DEBUG_MSG(1, ("should never happen"));
         return MBEDTLS_ERR_SSL_INTERNAL_ERROR;

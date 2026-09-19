@@ -23,6 +23,9 @@
 
 #include "psa/crypto.h"
 #include "md_psa.h"
+#if defined(MBEDTLS_LIBPOGOST_C)
+#include <libpogost/gost3410.h>
+#endif
 
 /* Define a local translating function to save code size by not using too many
  * arguments in each translating place. */
@@ -957,6 +960,42 @@ int mbedtls_ssl_tls13_populate_transform(
         return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
     }
 
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (ciphersuite == MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_MGM_L) {
+        transform->gost = 2;
+#if defined(MBEDTLS_SSL_SRV_C)
+        if (endpoint == MBEDTLS_SSL_IS_SERVER) {
+            key_enc = traffic_keys->server_write_key;
+            key_dec = traffic_keys->client_write_key;
+            iv_enc = traffic_keys->server_write_iv;
+            iv_dec = traffic_keys->client_write_iv;
+        } else
+#endif
+#if defined(MBEDTLS_SSL_CLI_C)
+        if (endpoint == MBEDTLS_SSL_IS_CLIENT) {
+            key_enc = traffic_keys->client_write_key;
+            key_dec = traffic_keys->server_write_key;
+            iv_enc = traffic_keys->client_write_iv;
+            iv_dec = traffic_keys->server_write_iv;
+        } else
+#endif
+        {
+            return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
+        }
+        memcpy(transform->gost_key_enc, key_enc, 32);
+        memcpy(transform->gost_key_dec, key_dec, 32);
+        memcpy(transform->iv_enc, iv_enc, 16);
+        memcpy(transform->iv_dec, iv_dec, 16);
+        transform->taglen = 16;
+        transform->ivlen = 16;
+        transform->maclen = 0;
+        transform->fixed_ivlen = 16;
+        transform->tls_version = MBEDTLS_SSL_VERSION_TLS1_3;
+        transform->minlen = transform->taglen + MBEDTLS_SSL_CID_TLS1_3_PADDING_GRANULARITY;
+        return 0;
+    }
+#endif
+
 #if !defined(MBEDTLS_USE_PSA_CRYPTO)
     cipher_info = mbedtls_cipher_info_from_type(ciphersuite_info->cipher);
     if (cipher_info == NULL) {
@@ -1094,6 +1133,13 @@ static int ssl_tls13_get_cipher_key_info(
     const mbedtls_ssl_ciphersuite_t *ciphersuite_info,
     size_t *key_len, size_t *iv_len)
 {
+#if defined(MBEDTLS_LIBPOGOST_C)
+    if (ciphersuite_info->id == MBEDTLS_TLS_GOSTR341112_256_WITH_KUZNYECHIK_MGM_L) {
+        *key_len = 32;
+        *iv_len = 16;
+        return 0;
+    }
+#endif
     psa_key_type_t key_type;
     psa_algorithm_t alg;
     size_t taglen;
@@ -1479,6 +1525,24 @@ static int ssl_tls13_key_schedule_stage_handshake(mbedtls_ssl_context *ssl)
      * are derived in the handshake secret derivation stage.
      */
     if (mbedtls_ssl_tls13_key_exchange_mode_with_ephemeral(ssl)) {
+#if defined(MBEDTLS_LIBPOGOST_C)
+        if (handshake->offered_group_id == MBEDTLS_SSL_IANA_TLS_GROUP_GC256A) {
+            if (handshake->xxdh_psa_peerkey_len != 64) {
+                return MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER;
+            }
+            shared_secret_len = 32;
+            shared_secret = mbedtls_calloc(1, shared_secret_len);
+            if (shared_secret == NULL) {
+                return MBEDTLS_ERR_SSL_ALLOC_FAILED;
+            }
+            if (gost3410_256tc26a_ecdh(shared_secret, handshake->xxdh_psa_peerkey, handshake->gost_ecdh_privkey) != 0) {
+                mbedtls_platform_zeroize(shared_secret, shared_secret_len);
+                mbedtls_free(shared_secret);
+                return MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER;
+            }
+            mbedtls_platform_zeroize(handshake->gost_ecdh_privkey, sizeof(handshake->gost_ecdh_privkey));
+        } else
+#endif
         if (mbedtls_ssl_tls13_named_group_is_ecdhe(handshake->offered_group_id) ||
             mbedtls_ssl_tls13_named_group_is_ffdh(handshake->offered_group_id)) {
 #if defined(PSA_WANT_ALG_ECDH) || defined(PSA_WANT_ALG_FFDH)
@@ -1672,6 +1736,14 @@ static int ssl_tls13_generate_application_keys(
             handshake->randbytes + MBEDTLS_CLIENT_HELLO_RANDOM_LEN,
             MBEDTLS_SSL_TLS_PRF_NONE /* TODO: this should be replaced by
                                         a new constant for TLS 1.3! */);
+
+        ssl->f_export_keys(
+            ssl->p_export_keys,
+            MBEDTLS_SSL_KEY_EXPORT_TLS1_3_EXPORTER_SECRET,
+            app_secrets->exporter_master_secret, hash_len,
+            handshake->randbytes,
+            handshake->randbytes + MBEDTLS_CLIENT_HELLO_RANDOM_LEN,
+            MBEDTLS_SSL_TLS_PRF_NONE);
     }
 
     MBEDTLS_SSL_DEBUG_BUF(4, "client application_write_key:",

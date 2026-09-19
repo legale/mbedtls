@@ -76,6 +76,13 @@ typedef struct {
         defined(MBEDTLS_PSA_BUILTIN_ALG_SHA3_512)
         mbedtls_sha3_context sha3;
 #endif
+#if defined(MBEDTLS_LIBPOGOST_C)
+        /* Opaque buffer for struct streebog_ctx (STREEBOG_CTX_SIZE = 336 bytes).
+         * We avoid including <libpogost/streebog.h> here so that 3rdparty
+         * components (p256-m, everest) which include psa/crypto.h without
+         * the libpogost include path continue to compile cleanly. */
+        unsigned long long streebog[42]; /* 42 * 8 = 336 bytes */
+#endif
     } MBEDTLS_PRIVATE(ctx);
 } mbedtls_psa_hash_operation_t;
 
