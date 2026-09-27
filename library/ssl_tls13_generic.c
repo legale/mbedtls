@@ -327,10 +327,20 @@ static int ssl_tls13_parse_certificate_verify(mbedtls_ssl_context *ssl,
     }
 #endif /* MBEDTLS_X509_RSASSA_PSS_SUPPORT */
 
+    unsigned char x509_sig[64];
+    const unsigned char *sig_ptr = p;
+    if (sig_alg == MBEDTLS_PK_GOST3410_256 && signature_len == 64) {
+        for (size_t i = 0; i < 32; i++) {
+            x509_sig[i] = p[32 + (31 - i)];
+            x509_sig[32 + i] = p[31 - i];
+        }
+        sig_ptr = x509_sig;
+    }
+
     if ((ret = mbedtls_pk_verify_ext(sig_alg, options,
                                      &ssl->session_negotiate->peer_cert->pk,
                                      md_alg, verify_hash, verify_hash_len,
-                                     p, signature_len)) == 0) {
+                                     sig_ptr, signature_len)) == 0) {
         return 0;
     }
     MBEDTLS_SSL_DEBUG_RET(1, "mbedtls_pk_verify_ext", ret);
@@ -1133,6 +1143,16 @@ static int ssl_tls13_write_certificate_verify_body(mbedtls_ssl_context *ssl,
 
         MBEDTLS_SSL_DEBUG_MSG(2, ("CertificateVerify signature with %s",
                                   mbedtls_ssl_sig_alg_to_str(*sig_alg)));
+
+        if (*sig_alg == MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A && signature_len == 64) {
+            unsigned char s_be[32], r_be[32];
+            memcpy(s_be, p + 4, 32);
+            memcpy(r_be, p + 4 + 32, 32);
+            for (size_t i = 0; i < 32; i++) {
+                p[4 + i] = r_be[31 - i];
+                p[4 + 32 + i] = s_be[31 - i];
+            }
+        }
 
         break;
     }

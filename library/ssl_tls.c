@@ -5128,6 +5128,12 @@ static const int ssl_preset_suiteb_ciphersuites[] = {
 static uint16_t ssl_preset_default_sig_algs[] = {
 #if defined(MBEDTLS_LIBPOGOST_C)
     MBEDTLS_TLS1_3_SIG_GOSTR34102012_256A,
+#if defined(MBEDTLS_KEY_EXCHANGE_GOST_ENABLED)
+    MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_GOST256,
+                                       MBEDTLS_SSL_HASH_INTRINSIC),
+    MBEDTLS_SSL_TLS12_SIG_AND_HASH_ALG(MBEDTLS_SSL_SIG_GOST512,
+                                       MBEDTLS_SSL_HASH_INTRINSIC),
+#endif
 #endif
 
 #if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED) && \
