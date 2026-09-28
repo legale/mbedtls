@@ -59,6 +59,11 @@
 #if !defined(_WIN32) || defined(EFIX64) || defined(EFI32)
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined(__linux__) && defined(__GLIBC__)
+extern int __xstat(int ver, const char *path, struct stat *stat_buf);
+#undef stat
+#define stat(path, buf) __xstat(1, (path), (buf))
+#endif
 #if defined(__MBED__)
 #include <platform/mbed_retarget.h>
 #else
