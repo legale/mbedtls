@@ -131,7 +131,34 @@ int mbedtls_gost3410_parse_private(mbedtls_pk_context *pk, const mbedtls_asn1_bu
   struct mbedtls_gost3410_context *ctx = pk->pk_ctx;
 
   if (gost_ctx_set_type(ctx, pk->pk_info->type) != 0 ||
-      !gost_params_valid(params, ctx->type, &ctx->tc26) || key_len != ctx->key_size)
+      !gost_params_valid(params, ctx->type, &ctx->tc26))
+    return MBEDTLS_ERR_PK_KEY_INVALID_FORMAT;
+
+  /*
+   * Снятие ASN.1-обёртки закрытого ключа:
+   * 1. В формате OpenSSL поле privateKey в PKCS#8 содержит чистые 32/64 байта ключа.
+   * 2. В формате Bouncy Castle / Java KeyStore (RFC 4491 / RFC 7836) закрытый ключ
+   *    ГОСТ помещается внутри поля privateKey как вложенный ASN.1 OCTET STRING
+   *    (тег 0x04, длина key_size, затем key_size байт ключа).
+   * 3. Некоторые криптопровайдеры кодируют ключ как ASN.1 INTEGER (тег 0x02),
+   *    с возможным лидирующим нулевым байтом для сохранения положительного знака числа.
+   */
+  if (key_len == ctx->key_size + 2 &&
+      (key[0] == MBEDTLS_ASN1_OCTET_STRING || key[0] == MBEDTLS_ASN1_INTEGER) &&
+      key[1] == ctx->key_size) {
+    /* Пропуск 2 байт заголовка ASN.1: [тег, длина] */
+    key += 2;
+    key_len -= 2;
+  } else if (key_len == ctx->key_size + 3 &&
+             key[0] == MBEDTLS_ASN1_INTEGER &&
+             key[1] == ctx->key_size + 1 &&
+             key[2] == 0x00) {
+    /* Пропуск 3 байт заголовка ASN.1 INTEGER со знаком: [тег, длина, 0x00] */
+    key += 3;
+    key_len -= 3;
+  }
+
+  if (key_len != ctx->key_size)
     return MBEDTLS_ERR_PK_KEY_INVALID_FORMAT;
 
   memcpy(ctx->private_key, key, key_len);
