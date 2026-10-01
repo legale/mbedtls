@@ -22,7 +22,7 @@
 
 static int gost_write_spki(unsigned char *buf, size_t size,
                            const unsigned char *public_key, size_t public_size,
-                           mbedtls_pk_type_t type)
+                           mbedtls_pk_type_t type, int tc26)
 {
   const char *alg_oid;
   const char *param_oid;
@@ -39,8 +39,17 @@ static int gost_write_spki(unsigned char *buf, size_t size,
   if (type == MBEDTLS_PK_GOST3410_256) {
     alg_oid = MBEDTLS_OID_GOST3410_2012_256;
     alg_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256);
-    param_oid = MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A;
-    param_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A);
+    /* The ephemeral key must advertise the same curve as the server key. */
+    if (tc26) {
+      param_oid = MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A;
+      param_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_256_PARAMSET_A);
+    } else {
+      param_oid = MBEDTLS_OID_GOST3410_2001_CRYPTOPRO_XCHA_PARAMSET;
+      param_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2001_CRYPTOPRO_XCHA_PARAMSET);
+    }
+    /* CryptoPro/OpenSSL expects the digest OID in the 256-bit AlgorithmIdentifier too. */
+    digest_oid = MBEDTLS_OID_STREEBOG_256;
+    digest_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_STREEBOG_256);
   } else if (type == MBEDTLS_PK_GOST3410_512) {
     alg_oid = MBEDTLS_OID_GOST3410_2012_512;
     alg_oid_len = MBEDTLS_OID_SIZE(MBEDTLS_OID_GOST3410_2012_512);
@@ -86,7 +95,8 @@ static int gost_write_spki(unsigned char *buf, size_t size,
 
 static int gost_keg(unsigned char keys[64], const unsigned char *public_key,
                     const unsigned char *private_key,
-                    const unsigned char ukm_source[32], mbedtls_pk_type_t type)
+                    const unsigned char ukm_source[32], mbedtls_pk_type_t type,
+                    int tc26)
 {
   static const unsigned char label[] = "kdf tree";
   unsigned char ukm[16];
@@ -98,7 +108,9 @@ static int gost_keg(unsigned char keys[64], const unsigned char *public_key,
     ukm[i] = ukm_source[sizeof(ukm) - 1 - i];
 
   if (type == MBEDTLS_PK_GOST3410_256) {
-    if (gost3410_256tc26a_vko(tmp, public_key, private_key, ukm) != 0)
+    /* VKO and the curve parameters must match the certificate's key. */
+    if ((tc26 && gost3410_256tc26a_vko(tmp, public_key, private_key, ukm) != 0) ||
+        (!tc26 && gost3410_256a_vko(tmp, public_key, private_key, ukm) != 0))
       goto out;
     if (gost_kdf_tree_256(keys, 64, tmp, sizeof(tmp), label,
                           sizeof(label) - 1, ukm_source + 16, 8) != 0)
@@ -144,8 +156,7 @@ int mbedtls_gost_key_transport_write(unsigned char *out, size_t out_size, size_t
     return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
 
   type = mbedtls_pk_get_type(server_key);
-  if (mbedtls_gost3410_get_meta(server_key, &key_size, &public_size, &tc26) != 0 ||
-      (type == MBEDTLS_PK_GOST3410_256 && !tc26)) {
+  if (mbedtls_gost3410_get_meta(server_key, &key_size, &public_size, &tc26) != 0) {
     ret = MBEDTLS_ERR_PK_BAD_INPUT_DATA;
     goto out;
   }
@@ -156,8 +167,10 @@ int mbedtls_gost_key_transport_write(unsigned char *out, size_t out_size, size_t
   for (i = 0; i < 32; i++) {
     if (f_rng(p_rng, eph_private, key_size) != 0)
       goto out;
-    if ((type == MBEDTLS_PK_GOST3410_256 &&
+    if ((type == MBEDTLS_PK_GOST3410_256 && tc26 &&
          gost3410_256tc26a_public(eph_public, eph_private) == 0) ||
+        (type == MBEDTLS_PK_GOST3410_256 && !tc26 &&
+         gost3410_256a_public(eph_public, eph_private) == 0) ||
         (type == MBEDTLS_PK_GOST3410_512 &&
          gost3410_512a_public(eph_public, eph_private) == 0))
       break;
@@ -166,11 +179,11 @@ int mbedtls_gost_key_transport_write(unsigned char *out, size_t out_size, size_t
     goto out;
 
   streebog256(ukm, random, 64);
-  ret = gost_keg(keys, server_public, eph_private, ukm, type);
+  ret = gost_keg(keys, server_public, eph_private, ukm, type, tc26);
   if (ret != 0)
     goto out;
   kuznyechik_kexp15(psexp, pms, keys, keys + 32, ukm + 24);
-  spki_len = gost_write_spki(spki, sizeof(spki), eph_public, public_size, type);
+  spki_len = gost_write_spki(spki, sizeof(spki), eph_public, public_size, type, tc26);
   if (spki_len < 0) {
     ret = spki_len;
     goto out;
@@ -225,8 +238,7 @@ int mbedtls_gost_key_transport_parse(unsigned char pms[32], const unsigned char 
     return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
 
   type = mbedtls_pk_get_type(server_key);
-  if (mbedtls_gost3410_get_meta(server_key, &key_size, &public_size, &tc26) != 0 ||
-      (type == MBEDTLS_PK_GOST3410_256 && !tc26))
+  if (mbedtls_gost3410_get_meta(server_key, &key_size, &public_size, &tc26) != 0)
     goto out;
 
   if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE) != 0 ||
@@ -254,7 +266,7 @@ int mbedtls_gost_key_transport_parse(unsigned char pms[32], const unsigned char 
   streebog256(expected_ukm, random, 64);
   if (mbedtls_gost3410_get_private(server_key, server_private) != 0 ||
       mbedtls_gost3410_get_public(&eph_key, eph_public) != 0 ||
-      gost_keg(keys, eph_public, server_private, expected_ukm, type) != 0)
+      gost_keg(keys, eph_public, server_private, expected_ukm, type, tc26) != 0)
     goto out;
   if (kuznyechik_kimp15(pms, psexp, keys, keys + 32, expected_ukm + 24) != 0)
     goto out;
@@ -270,4 +282,3 @@ out:
 }
 
 #endif
-
