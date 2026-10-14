@@ -2899,7 +2899,7 @@
 
 /* GOST algorithms are provided by the external libpogost library. */
 //#define MBEDTLS_LIBPOGOST_C
-#define MBEDTLS_KEY_EXCHANGE_GOST_ENABLED
+//#define MBEDTLS_KEY_EXCHANGE_GOST_ENABLED
 
 /**
  * \def MBEDTLS_MD5_C
