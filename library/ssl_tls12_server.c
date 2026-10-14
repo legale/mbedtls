@@ -4255,11 +4255,13 @@ static int ssl_parse_certificate_verify(mbedtls_ssl_context *ssl)
         return MBEDTLS_ERR_SSL_ILLEGAL_PARAMETER;
     }
 
+#if defined(MBEDTLS_LIBPOGOST_C)
     if (pk_alg == MBEDTLS_PK_GOST3410_256) {
         md_alg = MBEDTLS_MD_STREEBOG256;
         if (mbedtls_ssl_set_calc_verify_md_gost(ssl, pk_alg) != 0)
             return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
     }
+#endif
 
     /*
      * Check the certificate's key type matches the signature alg
