@@ -113,7 +113,7 @@ OBJS_CRYPTO= \
 	     entropy_poll.o \
 	     error.o \
 	     gcm.o \
-	     gost_pk.o \
+	       \
 	     hkdf.o \
 	     hmac_drbg.o \
 	     lmots.o \
@@ -181,7 +181,7 @@ OBJS_X509= \
 
 OBJS_TLS= \
 	  debug.o \
-	  gost_tls.o \
+	    \
 	  mps_reader.o \
 	  mps_trace.o \
 	  net_sockets.o \
