@@ -14,7 +14,9 @@
 #if defined(MBEDTLS_SSL_TLS_C)
 
 #include "mbedtls/platform.h"
+#if defined(MBEDTLS_LIBPOGOST_C)
 #include <libpogost/gost_tls.h>
+#endif
 
 #include "mbedtls/ssl.h"
 #include "ssl_client.h"
@@ -6874,6 +6876,7 @@ int mbedtls_ssl_set_calc_verify_md(mbedtls_ssl_context *ssl, int md)
     return 0;
 }
 
+#if defined(MBEDTLS_LIBPOGOST_C)
 int mbedtls_ssl_set_calc_verify_md_gost(mbedtls_ssl_context *ssl,
                                         mbedtls_pk_type_t type)
 {
@@ -6887,6 +6890,7 @@ int mbedtls_ssl_set_calc_verify_md_gost(mbedtls_ssl_context *ssl,
     }
     return -1;
 }
+#endif
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
 static int ssl_calc_verify_tls_psa(const mbedtls_ssl_context *ssl,

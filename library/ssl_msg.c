@@ -15,7 +15,9 @@
 #if defined(MBEDTLS_SSL_TLS_C)
 
 #include "mbedtls/platform.h"
+#if defined(MBEDTLS_LIBPOGOST_C)
 #include <libpogost/gost_tls.h>
+#endif
 
 #include "mbedtls/ssl.h"
 #include "ssl_misc.h"
